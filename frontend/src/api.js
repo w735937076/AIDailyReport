@@ -7,6 +7,14 @@ function pageQuery(page, size) {
   return p.toString()
 }
 
+function queryParams(obj) {
+  const p = new URLSearchParams()
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+  })
+  return p.toString()
+}
+
 async function request(path, options = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -43,6 +51,11 @@ export const api = {
   },
   jobs: {
     get: (jobId) => request(`/api/jobs/${jobId}`),
+  },
+  workItems: {
+    list: (params) => request(`/api/work-items?${queryParams(params)}`),
+    get: (id) => request(`/api/work-items/${id}`),
+    repos: () => request('/api/work-items/repos'),
   },
   collect: {
     now: () => request('/api/collect/now', { method: 'POST' }),

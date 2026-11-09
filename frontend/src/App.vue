@@ -7,6 +7,7 @@
       </div>
       <nav class="nav">
         <router-link to="/"><span class="nav-icon">▣</span>报告总览</router-link>
+        <router-link to="/work-items"><span class="nav-icon">☰</span>工作项</router-link>
         <router-link to="/projects"><span class="nav-icon">⌥</span>Git 项目</router-link>
         <router-link to="/ai"><span class="nav-icon">◇</span>AI 设置</router-link>
         <router-link to="/scheduler"><span class="nav-icon">◷</span>定时采集</router-link>

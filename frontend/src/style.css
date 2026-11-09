@@ -491,6 +491,55 @@ table.data-table {
   text-align: right;
 }
 
+.data-table.work-item-table {
+  table-layout: fixed;
+}
+
+.data-table .col-wi-date {
+  width: 6.5rem;
+  white-space: nowrap;
+}
+
+.data-table .col-wi-repo {
+  width: 10%;
+}
+
+.data-table .col-wi-type {
+  width: 6.5rem;
+}
+
+.data-table .col-wi-module {
+  width: 9%;
+}
+
+.data-table .col-wi-summary {
+  width: 28%;
+}
+
+.data-table .col-wi-progress {
+  width: 8%;
+}
+
+.data-table .col-wi-conf {
+  width: 4.5rem;
+}
+
+.data-table .col-wi-actions {
+  width: 4.5rem;
+  text-align: right;
+}
+
+.filter-bar select {
+  width: 100%;
+  height: var(--control-h);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-hairline);
+  padding: 0 0.65rem;
+  font-size: 0.8125rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
 .data-table .report-row {
   cursor: pointer;
 }
