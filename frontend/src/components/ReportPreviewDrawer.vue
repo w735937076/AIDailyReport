@@ -28,9 +28,11 @@ const savedTomorrow = ref('')
 const copiedAll = ref(false)
 const copiedSectionId = ref(null)
 const savedFlash = ref(false)
+const saveErrorFlash = ref(false)
 const contentTextarea = ref(null)
 const tomorrowTextarea = ref(null)
 let flashTimer = null
+let suppressBlurSave = false
 
 const isDaily = computed(() => props.reportKind === 'daily')
 
@@ -61,6 +63,7 @@ function resetDraft() {
   copiedAll.value = false
   copiedSectionId.value = null
   savedFlash.value = false
+  saveErrorFlash.value = false
 }
 
 watch(
@@ -87,12 +90,23 @@ function flashCopied(kind, sectionId) {
 }
 
 function flashSaved(report) {
+  saveErrorFlash.value = false
   savedFlash.value = true
   emit('saved', report)
   clearFlashTimer()
   flashTimer = setTimeout(() => {
     savedFlash.value = false
   }, 2500)
+}
+
+function flashSaveError(message) {
+  savedFlash.value = false
+  saveErrorFlash.value = true
+  clearFlashTimer()
+  flashTimer = setTimeout(() => {
+    saveErrorFlash.value = false
+  }, 3000)
+  if (message) console.warn(message)
 }
 
 function clearFlashTimer() {
@@ -130,8 +144,33 @@ async function enterEditMode(focusTarget = 'content') {
   el?.focus()
 }
 
-function finishEdit() {
-  editing.value = false
+function shouldSkipBlurSave(relatedTarget) {
+  if (!relatedTarget || !(relatedTarget instanceof Element)) return false
+  return !!relatedTarget.closest('.report-drawer__toolbar')
+}
+
+async function onEditBlur(event) {
+  if (suppressBlurSave) return
+  await nextTick()
+  if (shouldSkipBlurSave(event.relatedTarget)) return
+  if (!dirty.value || saving.value) return
+  const stayEditing =
+    event.relatedTarget instanceof Element && event.relatedTarget.classList.contains('report-edit-area')
+  await persistChanges({ exitEdit: !stayEditing })
+}
+
+async function finishEdit() {
+  suppressBlurSave = true
+  try {
+    if (dirty.value) {
+      await persistChanges({ exitEdit: true })
+    } else {
+      editing.value = false
+    }
+  } finally {
+    await nextTick()
+    suppressBlurSave = false
+  }
 }
 
 function onSectionDblClick(section) {
@@ -154,8 +193,11 @@ async function copySection(section) {
   flashCopied('section', section.id)
 }
 
-async function save() {
-  if (!props.reportId || saving.value) return
+async function persistChanges({ exitEdit = false, manual = false } = {}) {
+  if (!props.reportId || saving.value || !dirty.value) {
+    if (exitEdit) editing.value = false
+    return
+  }
   saving.value = true
   try {
     let updated
@@ -173,12 +215,24 @@ async function save() {
     if (isDaily.value) editTomorrow.value = updated.tomorrowPlan || ''
     savedContent.value = editContent.value
     savedTomorrow.value = editTomorrow.value
-    editing.value = false
+    if (exitEdit) editing.value = false
     flashSaved(updated)
   } catch (e) {
-    window.alert(e.message || '保存失败')
+    const msg = e.message || '保存失败'
+    if (manual) window.alert(msg)
+    else flashSaveError(msg)
   } finally {
     saving.value = false
+  }
+}
+
+async function save() {
+  suppressBlurSave = true
+  try {
+    await persistChanges({ exitEdit: true, manual: true })
+  } finally {
+    await nextTick()
+    suppressBlurSave = false
   }
 }
 </script>
@@ -207,7 +261,8 @@ async function save() {
               <button type="button" class="btn" :disabled="loading" @click="copyAll">复制全文</button>
               <span v-if="copiedAll" class="report-drawer__toast" role="status">已复制</span>
               <span v-if="savedFlash" class="report-drawer__toast" role="status">已保存</span>
-              <span v-if="dirty && !editing" class="report-drawer__dirty">未保存</span>
+              <span v-if="saveErrorFlash" class="report-drawer__toast report-drawer__toast--err" role="status">保存失败</span>
+              <span v-if="dirty" class="report-drawer__dirty">未保存</span>
               <button
                 v-if="editing"
                 type="button"
@@ -259,6 +314,7 @@ async function save() {
                     class="report-edit-area"
                     rows="16"
                     spellcheck="false"
+                    @blur="onEditBlur"
                   />
                   <template v-if="isDaily">
                     <label class="field-label" style="margin-top: 0.85rem">明日计划</label>
@@ -268,6 +324,7 @@ async function save() {
                       class="report-edit-area"
                       rows="6"
                       spellcheck="false"
+                      @blur="onEditBlur"
                     />
                   </template>
                 </template>
