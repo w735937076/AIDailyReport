@@ -43,5 +43,10 @@ public interface AiProviderMapper {
     void delete(@Param("id") Long id);
 
     @Select("SELECT COUNT(*) FROM app_ai_provider")
-    int count();
+    long count();
+
+    @Select("SELECT id, name, base_url AS baseUrl, api_key AS apiKey, model, connect_timeout_ms AS connectTimeoutMs, " +
+            "read_timeout_ms AS readTimeoutMs, enabled, priority, created_at AS createdAt, updated_at AS updatedAt " +
+            "FROM app_ai_provider ORDER BY priority ASC, id ASC LIMIT #{limit} OFFSET #{offset}")
+    List<AiProvider> findPage(@Param("offset") int offset, @Param("limit") int limit);
 }

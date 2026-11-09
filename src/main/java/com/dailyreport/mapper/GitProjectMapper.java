@@ -28,5 +28,9 @@ public interface GitProjectMapper {
     void delete(@Param("id") Long id);
 
     @Select("SELECT COUNT(*) FROM app_git_project")
-    int count();
+    long count();
+
+    @Select("SELECT id, name, local_path AS localPath, remote_url AS remoteUrl, branch, enabled, created_at AS createdAt, updated_at AS updatedAt " +
+            "FROM app_git_project ORDER BY name LIMIT #{limit} OFFSET #{offset}")
+    List<GitProject> findPage(@Param("offset") int offset, @Param("limit") int limit);
 }

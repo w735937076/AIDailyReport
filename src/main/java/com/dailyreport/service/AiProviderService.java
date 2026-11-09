@@ -10,6 +10,8 @@ import com.dailyreport.mapper.AppSettingMapper;
 import com.dailyreport.web.dto.AiPolicyDto;
 import com.dailyreport.web.dto.AiProviderRequest;
 import com.dailyreport.web.dto.AiProviderResponse;
+import com.dailyreport.web.dto.PageRequestUtil;
+import com.dailyreport.web.dto.PageResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -180,6 +182,15 @@ public class AiProviderService {
 
     public List<AiProviderResponse> listForApi() {
         return aiProviderMapper.findAll().stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    public PageResult<AiProviderResponse> listForApiPage(int page, int size) {
+        int s = PageRequestUtil.clampSize(size);
+        int p = PageRequestUtil.clampPage(page);
+        int offset = PageRequestUtil.offset(p, s);
+        List<AiProviderResponse> items = aiProviderMapper.findPage(offset, s).stream()
+                .map(this::toResponse).collect(Collectors.toList());
+        return new PageResult<>(items, aiProviderMapper.count(), p, s);
     }
 
     @Transactional

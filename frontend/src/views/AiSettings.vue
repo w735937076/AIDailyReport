@@ -1,8 +1,13 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api, UNCHANGED_SECRET } from '../api'
+import { usePagination } from '../composables/usePagination'
+import PageHeader from '../components/PageHeader.vue'
+import Pagination from '../components/Pagination.vue'
+import AppAlert from '../components/AppAlert.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingBlock from '../components/LoadingBlock.vue'
 
-const providers = ref([])
 const policy = ref({
   maxRetries: 3,
   retryDelayMs: 1000,
@@ -13,6 +18,9 @@ const form = ref(emptyForm())
 const editingId = ref(null)
 const msg = ref('')
 const err = ref('')
+const saving = ref(false)
+
+const pager = usePagination(({ page, size }) => api.ai.listProviders(page, size), 10)
 
 function emptyForm() {
   return {
@@ -28,13 +36,13 @@ function emptyForm() {
   }
 }
 
-async function load() {
-  providers.value = await api.ai.listProviders()
+async function loadAll() {
   const p = await api.ai.getPolicy()
   if (p) Object.assign(policy.value, p)
+  await pager.load()
 }
 
-onMounted(() => load().catch((e) => (err.value = e.message)))
+onMounted(() => loadAll().catch((e) => (err.value = e.message)))
 
 function resetForm() {
   editingId.value = null
@@ -58,6 +66,7 @@ function edit(row) {
 
 async function saveProvider() {
   err.value = ''
+  saving.value = true
   try {
     const body = { ...form.value }
     if (editingId.value) {
@@ -67,10 +76,12 @@ async function saveProvider() {
       await api.ai.createProvider(body)
       msg.value = '已添加提供商'
     }
-    await load()
+    await pager.refresh()
     resetForm()
   } catch (e) {
     err.value = e.message
+  } finally {
+    saving.value = false
   }
 }
 
@@ -86,13 +97,13 @@ async function savePolicy() {
 
 async function toggleEnabled(row) {
   await api.ai.setEnabled(row.id, !row.enabled)
-  await load()
+  await pager.refresh()
 }
 
 async function remove(row) {
   if (!confirm(`删除「${row.name}」？`)) return
   await api.ai.removeProvider(row.id)
-  await load()
+  await pager.refresh()
   msg.value = '已删除'
 }
 
@@ -107,111 +118,131 @@ async function nudgePriority(row, delta) {
     priority: (row.priority || 100) + delta,
     apiKey: UNCHANGED_SECRET,
   })
-  await load()
+  await pager.refresh()
 }
 </script>
 
 <template>
-  <h1>AI 设置</h1>
-  <p style="color:var(--muted);margin-top:-0.75rem">
-    可配置多个 OpenAI 兼容提供商；<strong>数字越小优先级越高</strong>（先尝试）。失败或冷却中会自动切换下一个已启用配置。
-  </p>
-  <p v-if="err" class="toast err">{{ err }}</p>
-  <p v-if="msg" class="toast ok">{{ msg }}</p>
+  <PageHeader
+    title="AI 设置"
+    subtitle="可配置多个 OpenAI 兼容提供商。数字越小优先级越高；失败或冷却时自动切换下一项。"
+  />
 
-  <div class="card">
-    <h2 style="margin-top:0;font-size:1.05rem">{{ editingId ? '编辑提供商' : '新增提供商' }}</h2>
-    <label>名称</label>
-    <input v-model="form.name" placeholder="MiniMax / DeepSeek / OpenAI" />
-    <label>API Key {{ form.apiKeyConfigured ? '（已配置，留 __UNCHANGED__ 不修改）' : '' }}</label>
-    <input v-model="form.apiKey" type="password" :placeholder="form.apiKeyConfigured ? UNCHANGED_SECRET : 'sk-...'" />
-    <label>Base URL</label>
-    <input v-model="form.baseUrl" />
-    <label>模型</label>
-    <input v-model="form.model" />
-    <div class="row">
-      <div>
-        <label>连接超时 (ms)</label>
-        <input v-model.number="form.connectTimeoutMs" type="number" />
+  <AppAlert :message="err" type="err" />
+  <AppAlert :message="msg" type="ok" />
+
+  <div class="split-layout">
+    <aside class="card">
+      <h2 class="card-title">{{ editingId ? '编辑提供商' : '新增提供商' }}</h2>
+      <label class="field-label">名称</label>
+      <input v-model="form.name" placeholder="MiniMax / DeepSeek / OpenAI" />
+      <label class="field-label">API Key {{ form.apiKeyConfigured ? '（已配置，用 __UNCHANGED__ 保留）' : '' }}</label>
+      <input v-model="form.apiKey" type="password" :placeholder="form.apiKeyConfigured ? UNCHANGED_SECRET : 'sk-...'" />
+      <label class="field-label">Base URL</label>
+      <input v-model="form.baseUrl" />
+      <label class="field-label">模型</label>
+      <input v-model="form.model" />
+      <div class="row">
+        <div>
+          <label class="field-label">连接超时 (ms)</label>
+          <input v-model.number="form.connectTimeoutMs" type="number" />
+        </div>
+        <div>
+          <label class="field-label">读取超时 (ms)</label>
+          <input v-model.number="form.readTimeoutMs" type="number" />
+        </div>
       </div>
-      <div>
-        <label>读取超时 (ms)</label>
-        <input v-model.number="form.readTimeoutMs" type="number" />
+      <div class="row">
+        <div>
+          <label class="field-label">优先级（越小越先）</label>
+          <input v-model.number="form.priority" type="number" />
+        </div>
+        <label class="field-check" style="align-self:flex-end;padding-bottom:1rem">
+          <input type="checkbox" v-model="form.enabled" />
+          启用
+        </label>
       </div>
-    </div>
-    <div class="row">
-      <div>
-        <label>优先级（越小越先）</label>
-        <input v-model.number="form.priority" type="number" />
-      </div>
-      <div style="display:flex;align-items:flex-end">
-        <label><input type="checkbox" v-model="form.enabled" style="width:auto;margin-right:0.5rem" />启用</label>
-      </div>
-    </div>
-    <button class="btn" @click="saveProvider">保存提供商</button>
-    <button v-if="editingId" class="btn btn-secondary" style="margin-left:0.5rem" @click="resetForm">取消</button>
+      <p class="action-group">
+        <button type="button" class="btn" :disabled="saving" @click="saveProvider">保存提供商</button>
+        <button v-if="editingId" type="button" class="btn btn-secondary" @click="resetForm">取消</button>
+      </p>
+    </aside>
+
+    <section class="card" style="margin-bottom:0">
+      <h2 class="card-title">已配置的提供商</h2>
+      <LoadingBlock v-if="pager.loading.value" />
+      <EmptyState v-else-if="!pager.items.value.length" title="暂无提供商" hint="请添加至少一个并配置 API Key。" icon="✦" />
+      <template v-else>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>优先级</th>
+                <th>名称</th>
+                <th>模型</th>
+                <th>Base URL</th>
+                <th>密钥</th>
+                <th>状态</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in pager.items.value" :key="p.id">
+                <td>
+                  <button type="button" class="btn btn-ghost btn-icon" title="提高优先级" @click="nudgePriority(p, -10)">↑</button>
+                  {{ p.priority }}
+                  <button type="button" class="btn btn-ghost btn-icon" title="降低优先级" @click="nudgePriority(p, 10)">↓</button>
+                </td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.model }}</td>
+                <td class="cell-ellipsis">{{ p.baseUrl }}</td>
+                <td>{{ p.apiKeyConfigured ? '已配置' : '未配置' }}</td>
+                <td>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="toggleEnabled(p)">
+                    {{ p.enabled ? '启用' : '停用' }}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="edit(p)">编辑</button>
+                  <button type="button" class="btn btn-danger btn-sm" @click="remove(p)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          :page="pager.page.value"
+          :size="pager.size.value"
+          :total="pager.total.value"
+          @update:page="pager.goToPage"
+          @update:size="pager.changeSize"
+        />
+      </template>
+    </section>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0;font-size:1.05rem">已配置的提供商</h2>
-    <table v-if="providers.length">
-      <thead>
-        <tr>
-          <th>优先级</th>
-          <th>名称</th>
-          <th>模型</th>
-          <th>Base URL</th>
-          <th>密钥</th>
-          <th>状态</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in providers" :key="p.id">
-          <td>
-            <button class="btn btn-secondary" style="padding:0.2rem 0.45rem" @click="nudgePriority(p, -10)">↑</button>
-            {{ p.priority }}
-            <button class="btn btn-secondary" style="padding:0.2rem 0.45rem" @click="nudgePriority(p, 10)">↓</button>
-          </td>
-          <td>{{ p.name }}</td>
-          <td>{{ p.model }}</td>
-          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">{{ p.baseUrl }}</td>
-          <td>{{ p.apiKeyConfigured ? '已配置' : '未配置' }}</td>
-          <td>
-            <button class="btn btn-secondary" @click="toggleEnabled(p)">{{ p.enabled ? '启用' : '停用' }}</button>
-          </td>
-          <td>
-            <button class="btn btn-secondary" @click="edit(p)">编辑</button>
-            <button class="btn btn-danger" style="margin-left:0.35rem" @click="remove(p)">删除</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else style="color:var(--muted)">暂无提供商，请添加至少一个并填写 API Key。</p>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0;font-size:1.05rem">全局重试 / 冷却</h2>
+  <section class="card">
+    <h2 class="card-title">全局重试 / 冷却</h2>
     <div class="row">
       <div>
-        <label>单提供商最大重试（最后一个提供商时生效）</label>
+        <label class="field-label">单提供商最大重试（链末生效）</label>
         <input v-model.number="policy.maxRetries" type="number" />
       </div>
       <div>
-        <label>重试间隔 (ms)</label>
+        <label class="field-label">重试间隔 (ms)</label>
         <input v-model.number="policy.retryDelayMs" type="number" />
       </div>
     </div>
     <div class="row">
       <div>
-        <label>失败阈值（触发冷却）</label>
+        <label class="field-label">失败阈值（触发冷却）</label>
         <input v-model.number="policy.failureThreshold" type="number" />
       </div>
       <div>
-        <label>冷却时长 (ms)</label>
+        <label class="field-label">冷却时长 (ms)</label>
         <input v-model.number="policy.cooldownMs" type="number" />
       </div>
     </div>
-    <button class="btn" @click="savePolicy">保存策略</button>
-  </div>
+    <button type="button" class="btn" @click="savePolicy">保存策略</button>
+  </section>
 </template>

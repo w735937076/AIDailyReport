@@ -30,4 +30,10 @@ public interface DailyReportMapper {
 
     @Select("SELECT * FROM daily_report WHERE report_date BETWEEN #{startDate} AND #{endDate} ORDER BY report_date")
     List<DailyReport> findByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @Select("SELECT COUNT(*) FROM daily_report")
+    long countAll();
+
+    @Select("SELECT * FROM daily_report ORDER BY report_date DESC LIMIT #{limit} OFFSET #{offset}")
+    List<DailyReport> findPage(@Param("offset") int offset, @Param("limit") int limit);
 }

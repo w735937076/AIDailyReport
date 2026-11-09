@@ -1,88 +1,128 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
+import { usePagination } from '../composables/usePagination'
+import PageHeader from '../components/PageHeader.vue'
+import Pagination from '../components/Pagination.vue'
+import AppAlert from '../components/AppAlert.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingBlock from '../components/LoadingBlock.vue'
+import StatusChip from '../components/StatusChip.vue'
 
-const daily = ref([])
-const weekly = ref([])
-const monthly = ref([])
+const tab = ref('daily')
 const msg = ref('')
 const err = ref('')
 
-onMounted(async () => {
-  try {
-    daily.value = await api.reports.dailyList()
-    weekly.value = await api.reports.periodList('WEEK')
-    monthly.value = await api.reports.periodList('MONTH')
-  } catch (e) {
+const dailyPager = usePagination(({ page, size }) => api.reports.dailyList(page, size), 10)
+const weeklyPager = usePagination(({ page, size }) => api.reports.periodList('WEEK', page, size), 10)
+const monthlyPager = usePagination(({ page, size }) => api.reports.periodList('MONTH', page, size), 10)
+
+const activePager = computed(() =>
+  tab.value === 'daily' ? dailyPager : tab.value === 'weekly' ? weeklyPager : monthlyPager,
+)
+
+watch(tab, () => activePager.value.load())
+
+onMounted(() => {
+  Promise.all([dailyPager.load(), weeklyPager.load(), monthlyPager.load()]).catch((e) => {
     err.value = e.message
-  }
+  })
 })
 
 function download(path) {
   if (!path) return
   window.open(api.downloadUrl(path), '_blank')
 }
+
+function onPageChange(p) {
+  activePager.value.goToPage(p)
+}
+
+function onSizeChange(s) {
+  activePager.value.changeSize(s)
+}
+
+const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
 </script>
 
 <template>
-  <h1>报告总览</h1>
-  <p v-if="err" class="toast err">{{ err }}</p>
-  <p v-if="msg" class="toast ok">{{ msg }}</p>
+  <PageHeader title="报告总览" subtitle="浏览已生成的日报、周报、月报，并下载导出文件。" />
+
+  <AppAlert :message="err" type="err" />
+  <AppAlert :message="msg" type="ok" />
+
+  <div class="stat-row">
+    <div v-for="(pager, key) in { daily: dailyPager, weekly: weeklyPager, monthly: monthlyPager }" :key="key" class="stat-card">
+      <div class="stat-label">{{ tabLabels[key] }}</div>
+      <div class="stat-value">{{ pager.total.value }}</div>
+    </div>
+  </div>
 
   <section class="card">
-    <h2 style="margin-top:0;font-size:1.1rem">日报</h2>
-    <table v-if="daily.length">
-      <thead>
-        <tr><th>日期</th><th>状态</th><th>导出</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in daily" :key="r.id">
-          <td>{{ r.reportDate }}</td>
-          <td><span class="badge">{{ r.status }}</span></td>
-          <td>
-            <button class="btn btn-secondary" v-if="r.excelPath" @click="download(r.excelPath)">下载</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else style="color:var(--muted)">暂无日报，请在「生成报告」中创建。</p>
-  </section>
+    <div class="tabs" role="tablist">
+      <button
+        v-for="t in ['daily', 'weekly', 'monthly']"
+        :key="t"
+        type="button"
+        class="tab"
+        :class="{ active: tab === t }"
+        @click="tab = t"
+      >{{ tabLabels[t] }}</button>
+    </div>
 
-  <section class="card">
-    <h2 style="margin-top:0;font-size:1.1rem">周报</h2>
-    <table v-if="weekly.length">
-      <thead>
-        <tr><th>周期</th><th>状态</th><th>导出</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in weekly" :key="r.id">
-          <td>{{ r.startDate }} ~ {{ r.endDate }}</td>
-          <td><span class="badge">{{ r.status }}</span></td>
-          <td>
-            <button class="btn btn-secondary" v-if="r.excelPath" @click="download(r.excelPath)">下载</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else style="color:var(--muted)">暂无周报。</p>
-  </section>
+    <LoadingBlock v-if="activePager.loading.value" />
+    <template v-else>
+      <AppAlert :message="activePager.error.value" type="err" />
 
-  <section class="card">
-    <h2 style="margin-top:0;font-size:1.1rem">月报</h2>
-    <table v-if="monthly.length">
-      <thead>
-        <tr><th>周期</th><th>状态</th><th>导出</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in monthly" :key="r.id">
-          <td>{{ r.startDate }} ~ {{ r.endDate }}</td>
-          <td><span class="badge">{{ r.status }}</span></td>
-          <td>
-            <button class="btn btn-secondary" v-if="r.excelPath" @click="download(r.excelPath)">下载</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else style="color:var(--muted)">暂无月报。</p>
+      <EmptyState
+        v-if="!activePager.items.value.length"
+        :title="`暂无${tabLabels[tab]}`"
+        hint="前往「生成报告」创建第一条记录。"
+        icon="📄"
+      />
+
+      <div v-else class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ tab === 'daily' ? '日期' : '周期' }}</th>
+              <th>状态</th>
+              <th style="width: 120px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in activePager.items.value" :key="r.id">
+              <td v-if="tab === 'daily'">{{ r.reportDate }}</td>
+              <td v-else>{{ r.startDate }} ~ {{ r.endDate }}</td>
+              <td><StatusChip :status="r.status" /></td>
+              <td>
+                <button
+                  v-if="r.excelPath"
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  @click="download(r.excelPath)"
+                >下载</button>
+                <span v-else class="text-muted">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        :page="activePager.page.value"
+        :size="activePager.size.value"
+        :total="activePager.total.value"
+        @update:page="onPageChange"
+        @update:size="onSizeChange"
+      />
+    </template>
   </section>
 </template>
+
+<style scoped>
+.text-muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+</style>

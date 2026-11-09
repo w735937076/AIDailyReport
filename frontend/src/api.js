@@ -1,5 +1,12 @@
 const BASE = ''
 
+function pageQuery(page, size) {
+  const p = new URLSearchParams()
+  p.set('page', String(page))
+  p.set('size', String(size))
+  return p.toString()
+}
+
 async function request(path, options = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -15,13 +22,13 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/api/health'),
   projects: {
-    list: () => request('/api/projects'),
+    list: (page = 1, size = 10) => request(`/api/projects?${pageQuery(page, size)}`),
     create: (body) => request('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
     update: (id, body) => request(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     remove: (id) => request(`/api/projects/${id}`, { method: 'DELETE' }),
   },
   ai: {
-    listProviders: () => request('/api/ai/providers'),
+    listProviders: (page = 1, size = 10) => request(`/api/ai/providers?${pageQuery(page, size)}`),
     createProvider: (body) => request('/api/ai/providers', { method: 'POST', body: JSON.stringify(body) }),
     updateProvider: (id, body) => request(`/api/ai/providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     removeProvider: (id) => request(`/api/ai/providers/${id}`, { method: 'DELETE' }),
@@ -39,8 +46,9 @@ export const api = {
     status: () => request('/api/collect/status'),
   },
   reports: {
-    dailyList: () => request('/api/reports/daily'),
-    periodList: (type) => request(`/api/reports/period/${type}`),
+    dailyList: (page = 1, size = 10) => request(`/api/reports/daily?${pageQuery(page, size)}`),
+    periodList: (type, page = 1, size = 10) =>
+      request(`/api/reports/period/${type}?${pageQuery(page, size)}`),
     generateDaily: (body) => request('/api/reports/daily/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
     generateWeekly: (body) => request('/api/reports/weekly/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
     generateMonthly: (body) => request('/api/reports/monthly/generate', { method: 'POST', body: JSON.stringify(body || {}) }),

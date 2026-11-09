@@ -4,6 +4,7 @@ import com.dailyreport.domain.GitProject;
 import com.dailyreport.service.SettingsService;
 import com.dailyreport.web.dto.ApiResponse;
 import com.dailyreport.web.dto.GitProjectRequest;
+import com.dailyreport.web.dto.PageResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,8 +20,10 @@ public class ProjectController {
     }
 
     @GetMapping
-    public ApiResponse<List<GitProject>> list() {
-        return ApiResponse.ok(settingsService.listProjects());
+    public ApiResponse<PageResult<GitProject>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponse.ok(settingsService.listProjectsPage(page, size));
     }
 
     @PostMapping

@@ -5,6 +5,7 @@ import com.dailyreport.web.dto.AiPolicyDto;
 import com.dailyreport.web.dto.AiProviderRequest;
 import com.dailyreport.web.dto.AiProviderResponse;
 import com.dailyreport.web.dto.ApiResponse;
+import com.dailyreport.web.dto.PageResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,8 +22,10 @@ public class AiProviderController {
     }
 
     @GetMapping("/providers")
-    public ApiResponse<List<AiProviderResponse>> listProviders() {
-        return ApiResponse.ok(aiProviderService.listForApi());
+    public ApiResponse<PageResult<AiProviderResponse>> listProviders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponse.ok(aiProviderService.listForApiPage(page, size));
     }
 
     @PostMapping("/providers")

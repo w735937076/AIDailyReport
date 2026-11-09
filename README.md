@@ -43,6 +43,8 @@ java -jar target/dailyreport-1.0.0.jar
 
 5. 浏览器访问 [http://localhost:18080](http://localhost:18080)（启动时会尝试自动打开）。
 
+列表接口统一支持 `page`（从 1 开始）与 `size`（最大 100），响应体为 `{ items, total, page, size }`。
+
 ### 前端开发模式
 
 ```bash
@@ -63,9 +65,9 @@ cd frontend && npm run build
 
 | 页面 | API | 说明 |
 |------|-----|------|
-| 报告总览 | `GET /api/reports/daily`, `GET /api/reports/period/{type}` | 列表与下载 |
-| Git 项目 | `CRUD /api/projects` | 本地路径或远程 URL + 分支 |
-| AI 设置 | `CRUD /api/ai/providers` + `GET/PUT /api/ai/policy` | 多个 OpenAI 兼容提供商，**priority 越小越优先** |
+| 报告总览 | `GET /api/reports/daily?page&size`, `GET /api/reports/period/{type}?page&size` | 分页列表与下载 |
+| Git 项目 | `GET /api/projects?page&size` + `POST/PUT/DELETE` | 本地路径或远程 URL + 分支 |
+| AI 设置 | `GET /api/ai/providers?page&size` + CRUD + `GET/PUT /api/ai/policy` | 多个 OpenAI 兼容提供商，**priority 越小越优先** |
 | 定时采集 | `GET/PUT /api/scheduler`, `POST /api/collect/now` | 默认 cron `0 0 18 * * ?`，时区 `Asia/Shanghai` |
 | 生成报告 | `POST /api/reports/{daily,weekly,monthly}/generate` | 状态与 Excel 导出 |
 

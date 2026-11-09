@@ -27,4 +27,10 @@ public interface PeriodReportMapper {
 
     @Select("SELECT * FROM period_report ORDER BY start_date DESC")
     List<PeriodReport> findAll();
+
+    @Select("SELECT COUNT(*) FROM period_report WHERE type = #{type}")
+    long countByType(@Param("type") String type);
+
+    @Select("SELECT * FROM period_report WHERE type = #{type} ORDER BY start_date DESC LIMIT #{limit} OFFSET #{offset}")
+    List<PeriodReport> findPageByType(@Param("type") String type, @Param("offset") int offset, @Param("limit") int limit);
 }

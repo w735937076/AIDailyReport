@@ -8,6 +8,7 @@ import com.dailyreport.service.ExcelExportService;
 import com.dailyreport.service.ReportGenerateService;
 import com.dailyreport.web.dto.ApiResponse;
 import com.dailyreport.web.dto.GenerateReportRequest;
+import com.dailyreport.web.dto.PageResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.DayOfWeek;
@@ -38,9 +39,10 @@ public class ReportController {
     }
 
     @GetMapping("/daily")
-    public ApiResponse<List<DailyReport>> listDaily() {
-        return ApiResponse.ok(reportGenerateService.getDailyReports(
-                LocalDate.now().minusYears(2), LocalDate.now().plusDays(1)));
+    public ApiResponse<PageResult<DailyReport>> listDaily(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponse.ok(reportGenerateService.getDailyReportsPage(page, size));
     }
 
     @GetMapping("/daily/{date}")
@@ -49,8 +51,11 @@ public class ReportController {
     }
 
     @GetMapping("/period/{type}")
-    public ApiResponse<List<PeriodReport>> listPeriod(@PathVariable String type) {
-        return ApiResponse.ok(reportGenerateService.getPeriodReports(type.toUpperCase()));
+    public ApiResponse<PageResult<PeriodReport>> listPeriod(
+            @PathVariable String type,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ApiResponse.ok(reportGenerateService.getPeriodReportsPage(type, page, size));
     }
 
     @GetMapping("/status")

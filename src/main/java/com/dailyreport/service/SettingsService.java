@@ -7,6 +7,8 @@ import com.dailyreport.mapper.AppSettingMapper;
 import com.dailyreport.mapper.GitProjectMapper;
 import com.dailyreport.mapper.SchedulerSettingsMapper;
 import com.dailyreport.web.dto.GitProjectRequest;
+import com.dailyreport.web.dto.PageRequestUtil;
+import com.dailyreport.web.dto.PageResult;
 import com.dailyreport.web.dto.SchedulerSettingsRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -88,6 +90,13 @@ public class SettingsService {
 
     public List<GitProject> listProjects() {
         return gitProjectMapper.findAll();
+    }
+
+    public PageResult<GitProject> listProjectsPage(int page, int size) {
+        int s = PageRequestUtil.clampSize(size);
+        int p = PageRequestUtil.clampPage(page);
+        int offset = PageRequestUtil.offset(p, s);
+        return new PageResult<>(gitProjectMapper.findPage(offset, s), gitProjectMapper.count(), p, s);
     }
 
     public GitProject getProject(Long id) {
