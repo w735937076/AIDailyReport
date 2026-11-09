@@ -637,6 +637,16 @@ table.data-table {
   font-weight: 500;
 }
 
+.report-drawer__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+.report-body--dblclick {
+  cursor: text;
+}
+
 .report-edit-area {
   width: 100%;
   min-height: 12rem;

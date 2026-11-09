@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { api } from '../api'
 import { parseReportSections } from '../utils/parseReportSections'
 import { writeClipboard } from '../utils/clipboard'
@@ -28,6 +28,8 @@ const savedTomorrow = ref('')
 const copiedAll = ref(false)
 const copiedSectionId = ref(null)
 const savedFlash = ref(false)
+const contentTextarea = ref(null)
+const tomorrowTextarea = ref(null)
 let flashTimer = null
 
 const isDaily = computed(() => props.reportKind === 'daily')
@@ -115,8 +117,29 @@ function onKeydown(e) {
   if (e.key === 'Escape') tryClose()
 }
 
-function toggleEdit() {
-  editing.value = !editing.value
+function isTomorrowSection(section) {
+  const t = section?.title
+  return t === '【明日计划】' || t === '明日计划'
+}
+
+async function enterEditMode(focusTarget = 'content') {
+  if (props.loading || editing.value) return
+  editing.value = true
+  await nextTick()
+  const el = focusTarget === 'tomorrow' ? tomorrowTextarea.value : contentTextarea.value
+  el?.focus()
+}
+
+function finishEdit() {
+  editing.value = false
+}
+
+function onSectionDblClick(section) {
+  enterEditMode(isTomorrowSection(section) ? 'tomorrow' : 'content')
+}
+
+function onPlainBodyDblClick() {
+  enterEditMode('content')
 }
 
 async function copyAll() {
@@ -186,12 +209,22 @@ async function save() {
               <span v-if="savedFlash" class="report-drawer__toast" role="status">已保存</span>
               <span v-if="dirty && !editing" class="report-drawer__dirty">未保存</span>
               <button
+                v-if="editing"
                 type="button"
                 class="btn btn-secondary btn-sm"
                 :disabled="loading || saving"
-                @click="toggleEdit"
+                @click="finishEdit"
               >
-                {{ editing ? '完成编辑' : '编辑' }}
+                完成编辑
+              </button>
+              <button
+                v-else
+                type="button"
+                class="btn btn-ghost btn-sm"
+                :disabled="loading || saving"
+                @click="enterEditMode('content')"
+              >
+                编辑
               </button>
               <button
                 type="button"
@@ -216,31 +249,54 @@ async function save() {
                 <span class="spinner spinner--accent" />
                 <span>加载报告内容…</span>
               </div>
-              <template v-else-if="editing">
-                <label class="field-label">正文</label>
-                <textarea v-model="editContent" class="report-edit-area" rows="16" spellcheck="false" />
-                <template v-if="isDaily">
-                  <label class="field-label" style="margin-top: 0.85rem">明日计划</label>
-                  <textarea v-model="editTomorrow" class="report-edit-area" rows="6" spellcheck="false" />
+              <template v-else>
+                <p v-if="!editing" class="report-drawer__hint">双击正文区域可编辑</p>
+                <template v-if="editing">
+                  <label class="field-label">正文</label>
+                  <textarea
+                    ref="contentTextarea"
+                    v-model="editContent"
+                    class="report-edit-area"
+                    rows="16"
+                    spellcheck="false"
+                  />
+                  <template v-if="isDaily">
+                    <label class="field-label" style="margin-top: 0.85rem">明日计划</label>
+                    <textarea
+                      ref="tomorrowTextarea"
+                      v-model="editTomorrow"
+                      class="report-edit-area"
+                      rows="6"
+                      spellcheck="false"
+                    />
+                  </template>
                 </template>
+                <template v-else-if="hasStructuredSections">
+                  <section v-for="section in sections" :key="section.id" class="report-section">
+                    <header v-if="section.title" class="report-section__head">
+                      <h3 class="report-section__title">{{ section.title }}</h3>
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-sm report-section__copy"
+                        :disabled="!section.body.trim()"
+                        @click="copySection(section)"
+                      >
+                        {{ copiedSectionId === section.id ? '已复制' : '复制' }}
+                      </button>
+                    </header>
+                    <pre
+                      class="report-section__text report-body--dblclick"
+                      @dblclick="onSectionDblClick(section)"
+                    >{{ section.body || '（无内容）' }}</pre>
+                  </section>
+                </template>
+                <pre
+                  v-else
+                  class="report-drawer__text report-body--dblclick"
+                  tabindex="0"
+                  @dblclick="onPlainBodyDblClick"
+                >{{ activeFullText || '（暂无正文内容）' }}</pre>
               </template>
-              <template v-else-if="hasStructuredSections">
-                <section v-for="section in sections" :key="section.id" class="report-section">
-                  <header v-if="section.title" class="report-section__head">
-                    <h3 class="report-section__title">{{ section.title }}</h3>
-                    <button
-                      type="button"
-                      class="btn btn-ghost btn-sm report-section__copy"
-                      :disabled="!section.body.trim()"
-                      @click="copySection(section)"
-                    >
-                      {{ copiedSectionId === section.id ? '已复制' : '复制' }}
-                    </button>
-                  </header>
-                  <pre class="report-section__text">{{ section.body || '（无内容）' }}</pre>
-                </section>
-              </template>
-              <pre v-else class="report-drawer__text" tabindex="0">{{ activeFullText || '（暂无正文内容）' }}</pre>
             </div>
           </aside>
         </Transition>
