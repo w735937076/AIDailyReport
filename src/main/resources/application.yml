@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: dailyreport
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/dailyreport?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
+    username: root
+    password: your-mysql-password
+
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 18080
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.dailyreport.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    root: INFO
+    com.dailyreport: DEBUG
+  file:
+    name: ./logs/app.log
+
+app:
+  config-file: ./config.yaml

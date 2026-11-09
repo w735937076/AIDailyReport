@@ -1,0 +1,13 @@
+/config.local.yml
+/config.yaml
+/target/
+/logs/
+/output/
+/data/
+/.idea/
+hs_err_pid*.log
+*.db
+_publish.ps1
+application.yml.localbak
+sanitize.ps1
+push.ps1

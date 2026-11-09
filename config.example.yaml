@@ -1,0 +1,44 @@
+# DailyReport 配置示例（复制为 config.yaml 后按需填写）
+# config.yaml 已在 .gitignore 中，请勿把真实密钥提交到仓库
+
+git:
+  repos:
+    - name: "示例项目"
+      path: "E:/path/to/your/repo"
+    # 远程仓库示例:
+    # - name: "远程项目"
+    #   remote: "https://github.com/user/project.git"
+    #   branch: "main"
+
+  account:
+    username: "your-git-username"
+    password: "your-git-token-or-password"
+
+ai:
+  apiKey: "${MINIMAX_API_KEY:}"
+  baseUrl: "https://api.minimax.cn/v1"
+  model: "MiniMax-M3.1-Flash"
+  maxRetries: 3
+  retryDelayMs: 1000
+  connectTimeoutMs: 5000
+  readTimeoutMs: 60000
+  failureThreshold: 2
+  cooldownMs: 120000
+  fallback:
+    enabled: true
+    apiKey: "${DEEPSEEK_API_KEY:}"
+    baseUrl: "https://api.deepseek.com"
+    model: "deepseek-v4-pro"
+    connectTimeoutMs: 5000
+    readTimeoutMs: 60000
+
+report:
+  templateDir: "./templates"
+  outputDir: "./output"
+  dailyTemplate: "daily_template.xlsx"
+  weeklyTemplate: "weekly_template.xlsx"
+  monthlyTemplate: "monthly_template.xlsx"
+
+scheduler:
+  enabled: false
+  cron: "0 0 18 * * ?"
