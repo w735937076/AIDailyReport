@@ -74,7 +74,7 @@ class AiReadTimeoutTest {
 
             when(providerService.listEnabledForRuntime()).thenReturn(List.of(primary, backup));
 
-            assertEquals("backup", new AiChatClient(providerService, Clock.systemUTC()).complete("prompt"));
+            assertEquals("backup", new AiChatClient(providerService, Clock.systemUTC(), null).complete("prompt"));
             assertTrue(primaryReceived.await(1, TimeUnit.SECONDS));
         } finally {
             releasePrimary.countDown();
