@@ -19,6 +19,9 @@ public interface PeriodReportMapper {
             "WHERE type = #{type} AND start_date = #{startDate}")
     void update(PeriodReport report);
 
+    @Select("SELECT * FROM period_report WHERE id = #{id}")
+    PeriodReport findById(@Param("id") Long id);
+
     @Select("SELECT * FROM period_report WHERE type = #{type} AND start_date = #{startDate}")
     PeriodReport findByTypeAndStartDate(@Param("type") String type, @Param("startDate") LocalDate startDate);
 

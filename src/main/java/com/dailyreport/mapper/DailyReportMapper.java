@@ -19,6 +19,9 @@ public interface DailyReportMapper {
             "WHERE report_date = #{reportDate}")
     void update(DailyReport report);
 
+    @Select("SELECT * FROM daily_report WHERE id = #{id}")
+    DailyReport findById(@Param("id") Long id);
+
     @Select("SELECT * FROM daily_report WHERE report_date = #{date}")
     DailyReport findByDate(@Param("date") LocalDate date);
 

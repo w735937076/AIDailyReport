@@ -8,6 +8,7 @@ import AppAlert from '../components/AppAlert.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingBlock from '../components/LoadingBlock.vue'
 import StatusChip from '../components/StatusChip.vue'
+import ReportPreviewDrawer from '../components/ReportPreviewDrawer.vue'
 
 const tab = ref('daily')
 const msg = ref('')
@@ -29,9 +30,67 @@ onMounted(() => {
   })
 })
 
-function download(path) {
-  if (!path) return
-  window.open(api.downloadUrl(path), '_blank')
+const previewOpen = ref(false)
+const previewLoading = ref(false)
+const previewTitle = ref('')
+const previewText = ref('')
+const previewExcel = ref('')
+let dismissTimer = null
+
+function flashOk(text) {
+  msg.value = text
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = setTimeout(() => {
+    msg.value = ''
+  }, 3000)
+}
+
+function buildDailyText(report) {
+  const parts = []
+  if (report.content) parts.push(report.content.trim())
+  if (report.tomorrowPlan && report.tomorrowPlan.trim()) {
+    if (parts.length) parts.push('')
+    parts.push('【明日计划】')
+    parts.push(report.tomorrowPlan.trim())
+  }
+  return parts.join('\n')
+}
+
+function buildPeriodText(report) {
+  return (report.content || '').trim()
+}
+
+async function openPreview(row) {
+  err.value = ''
+  previewOpen.value = true
+  previewLoading.value = true
+  previewText.value = ''
+  previewExcel.value = row.excelPath || ''
+
+  try {
+    let report
+    if (tab.value === 'daily') {
+      previewTitle.value = `日报 · ${row.reportDate}`
+      report = await api.reports.getDailyById(row.id)
+      previewText.value = buildDailyText(report)
+    } else {
+      const label = tab.value === 'weekly' ? '周报' : '月报'
+      previewTitle.value = `${label} · ${row.startDate} ~ ${row.endDate}`
+      report = await api.reports.getPeriodById(row.id)
+      previewText.value = buildPeriodText(report)
+      previewExcel.value = report?.excelPath || previewExcel.value
+    }
+  } catch (e) {
+    previewOpen.value = false
+    err.value = e.message
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function downloadExcel() {
+  if (!previewExcel.value) return
+  window.open(api.downloadUrl(previewExcel.value), '_blank')
 }
 
 function onPageChange(p) {
@@ -46,7 +105,7 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
 </script>
 
 <template>
-  <PageHeader title="报告总览" subtitle="浏览已生成的日报、周报、月报，并下载导出文件。" />
+  <PageHeader title="报告总览" subtitle="在线预览日报、周报、月报正文，一键复制全文；如需表格文件可次要下载 Excel。" />
 
   <AppAlert :message="err" type="err" />
   <AppAlert :message="msg" type="ok" />
@@ -82,27 +141,28 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
       />
 
       <div v-else class="table-wrap">
-        <table class="data-table table-fluid">
+        <table class="data-table report-table">
           <thead>
             <tr>
-              <th class="col-path">{{ tab === 'daily' ? '日期' : '周期' }}</th>
-              <th class="col-status">状态</th>
-              <th class="col-actions">操作</th>
+              <th class="col-report-date">{{ tab === 'daily' ? '日期' : '周期' }}</th>
+              <th class="col-report-status">状态</th>
+              <th class="col-report-actions">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in activePager.items.value" :key="r.id">
-              <td v-if="tab === 'daily'" class="col-path">{{ r.reportDate }}</td>
-              <td v-else class="col-path">{{ r.startDate }} ~ {{ r.endDate }}</td>
-              <td class="col-status"><StatusChip :status="r.status" /></td>
-              <td class="col-actions">
-                <button
-                  v-if="r.excelPath"
-                  type="button"
-                  class="btn btn-ghost btn-sm"
-                  @click="download(r.excelPath)"
-                >下载</button>
-                <span v-else class="text-muted">—</span>
+            <tr
+              v-for="r in activePager.items.value"
+              :key="r.id"
+              class="report-row"
+              tabindex="0"
+              @click="openPreview(r)"
+              @keydown.enter="openPreview(r)"
+            >
+              <td v-if="tab === 'daily'" class="col-report-date">{{ r.reportDate }}</td>
+              <td v-else class="col-report-date">{{ r.startDate }} ~ {{ r.endDate }}</td>
+              <td class="col-report-status"><StatusChip :status="r.status" /></td>
+              <td class="col-report-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @click.stop="openPreview(r)">预览</button>
               </td>
             </tr>
           </tbody>
@@ -118,11 +178,15 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
       />
     </template>
   </section>
-</template>
 
-<style scoped>
-.text-muted {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-</style>
+  <ReportPreviewDrawer
+    :open="previewOpen"
+    :loading="previewLoading"
+    :title="previewTitle"
+    :full-text="previewText"
+    :excel-path="previewExcel"
+    @close="previewOpen = false"
+    @download-excel="downloadExcel"
+    @copied="flashOk('已复制')"
+  />
+</template>

@@ -50,9 +50,31 @@ public class ReportController {
         return ApiResponse.ok(reportGenerateService.getDailyReportsPage(page, size));
     }
 
+    @GetMapping("/daily/id/{id}")
+    public ApiResponse<DailyReport> getDailyById(@PathVariable Long id) {
+        DailyReport report = reportGenerateService.getDailyReportById(id);
+        if (report == null) {
+            return ApiResponse.fail("日报不存在");
+        }
+        return ApiResponse.ok(report);
+    }
+
     @GetMapping("/daily/{date}")
     public ApiResponse<DailyReport> getDaily(@PathVariable String date) {
-        return ApiResponse.ok(reportGenerateService.getDailyReport(LocalDate.parse(date, DATE_FORMAT)));
+        DailyReport report = reportGenerateService.getDailyReport(LocalDate.parse(date, DATE_FORMAT));
+        if (report == null) {
+            return ApiResponse.fail("日报不存在");
+        }
+        return ApiResponse.ok(report);
+    }
+
+    @GetMapping("/period/id/{id}")
+    public ApiResponse<PeriodReport> getPeriodById(@PathVariable Long id) {
+        PeriodReport report = reportGenerateService.getPeriodReportById(id);
+        if (report == null) {
+            return ApiResponse.fail("报告不存在");
+        }
+        return ApiResponse.ok(report);
     }
 
     @GetMapping("/period/{type}")

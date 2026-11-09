@@ -369,6 +369,14 @@ public class ReportGenerateService {
         return dailyReportMapper.findByDate(date);
     }
 
+    public DailyReport getDailyReportById(Long id) {
+        return dailyReportMapper.findById(id);
+    }
+
+    public PeriodReport getPeriodReportById(Long id) {
+        return periodReportMapper.findById(id);
+    }
+
     public List<PeriodReport> getPeriodReports(String type) {
         return periodReportMapper.findByType(type);
     }
