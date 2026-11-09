@@ -19,6 +19,9 @@ public interface PeriodReportMapper {
             "WHERE type = #{type} AND start_date = #{startDate}")
     void update(PeriodReport report);
 
+    @Update("UPDATE period_report SET content = #{content}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}")
+    int updateContentById(@Param("id") Long id, @Param("content") String content);
+
     @Select("SELECT * FROM period_report WHERE id = #{id}")
     PeriodReport findById(@Param("id") Long id);
 

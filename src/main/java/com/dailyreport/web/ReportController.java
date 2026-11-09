@@ -11,6 +11,8 @@ import com.dailyreport.web.dto.ApiResponse;
 import com.dailyreport.web.dto.GenerateReportRequest;
 import com.dailyreport.web.dto.PageResult;
 import com.dailyreport.web.dto.StartJobResponse;
+import com.dailyreport.web.dto.UpdateDailyReportRequest;
+import com.dailyreport.web.dto.UpdatePeriodReportRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.DayOfWeek;
@@ -68,6 +70,18 @@ public class ReportController {
         return ApiResponse.ok(report);
     }
 
+    @PutMapping("/daily/{id}")
+    public ApiResponse<DailyReport> updateDaily(@PathVariable Long id, @RequestBody UpdateDailyReportRequest req) {
+        if (req == null) {
+            return ApiResponse.fail("请求体不能为空");
+        }
+        DailyReport updated = reportGenerateService.updateDailyReportText(id, req.getContent(), req.getTomorrowPlan());
+        if (updated == null) {
+            return ApiResponse.fail("日报不存在");
+        }
+        return ApiResponse.ok(updated);
+    }
+
     @GetMapping("/period/id/{id}")
     public ApiResponse<PeriodReport> getPeriodById(@PathVariable Long id) {
         PeriodReport report = reportGenerateService.getPeriodReportById(id);
@@ -75,6 +89,18 @@ public class ReportController {
             return ApiResponse.fail("报告不存在");
         }
         return ApiResponse.ok(report);
+    }
+
+    @PutMapping("/period/{id}")
+    public ApiResponse<PeriodReport> updatePeriod(@PathVariable Long id, @RequestBody UpdatePeriodReportRequest req) {
+        if (req == null) {
+            return ApiResponse.fail("请求体不能为空");
+        }
+        PeriodReport updated = reportGenerateService.updatePeriodReportText(id, req.getContent());
+        if (updated == null) {
+            return ApiResponse.fail("报告不存在");
+        }
+        return ApiResponse.ok(updated);
     }
 
     @GetMapping("/period/{type}")

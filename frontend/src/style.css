@@ -631,6 +631,33 @@ table.data-table {
   user-select: text;
 }
 
+.report-drawer__dirty {
+  font-size: 0.75rem;
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.report-edit-area {
+  width: 100%;
+  min-height: 12rem;
+  margin-bottom: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: #fafaf9;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text);
+  resize: vertical;
+}
+
+.report-edit-area:focus {
+  outline: none;
+  border-color: rgba(29, 78, 216, 0.35);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
 .drawer-backdrop-enter-active,
 .drawer-backdrop-leave-active {
   transition: opacity 0.22s ease;

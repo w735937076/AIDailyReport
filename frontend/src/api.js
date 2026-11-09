@@ -53,6 +53,10 @@ export const api = {
     getDailyById: (id) => request(`/api/reports/daily/id/${id}`),
     getDailyByDate: (date) => request(`/api/reports/daily/${date}`),
     getPeriodById: (id) => request(`/api/reports/period/id/${id}`),
+    updateDaily: (id, body) =>
+      request(`/api/reports/daily/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    updatePeriod: (id, body) =>
+      request(`/api/reports/period/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     periodList: (type, page = 1, size = 10) =>
       request(`/api/reports/period/${type}?${pageQuery(page, size)}`),
     generateDaily: (body) => request('/api/reports/daily/generate', { method: 'POST', body: JSON.stringify(body || {}) }),

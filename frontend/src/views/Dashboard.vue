@@ -33,8 +33,11 @@ onMounted(() => {
 const previewOpen = ref(false)
 const previewLoading = ref(false)
 const previewTitle = ref('')
-const previewText = ref('')
 const previewExcel = ref('')
+const previewId = ref(null)
+const previewKind = ref('daily')
+const previewContent = ref('')
+const previewTomorrow = ref('')
 let dismissTimer = null
 
 function flashOk(text) {
@@ -45,39 +48,28 @@ function flashOk(text) {
   }, 3000)
 }
 
-function buildDailyText(report) {
-  const parts = []
-  if (report.content) parts.push(report.content.trim())
-  if (report.tomorrowPlan && report.tomorrowPlan.trim()) {
-    if (parts.length) parts.push('')
-    parts.push('【明日计划】')
-    parts.push(report.tomorrowPlan.trim())
-  }
-  return parts.join('\n')
-}
-
-function buildPeriodText(report) {
-  return (report.content || '').trim()
-}
-
 async function openPreview(row) {
   err.value = ''
   previewOpen.value = true
   previewLoading.value = true
-  previewText.value = ''
+  previewContent.value = ''
+  previewTomorrow.value = ''
   previewExcel.value = row.excelPath || ''
+  previewId.value = row.id
+  previewKind.value = tab.value === 'daily' ? 'daily' : 'period'
 
   try {
     let report
     if (tab.value === 'daily') {
       previewTitle.value = `日报 · ${row.reportDate}`
       report = await api.reports.getDailyById(row.id)
-      previewText.value = buildDailyText(report)
+      previewContent.value = report.content || ''
+      previewTomorrow.value = report.tomorrowPlan || ''
     } else {
       const label = tab.value === 'weekly' ? '周报' : '月报'
       previewTitle.value = `${label} · ${row.startDate} ~ ${row.endDate}`
       report = await api.reports.getPeriodById(row.id)
-      previewText.value = buildPeriodText(report)
+      previewContent.value = report.content || ''
       previewExcel.value = report?.excelPath || previewExcel.value
     }
   } catch (e) {
@@ -86,6 +78,14 @@ async function openPreview(row) {
   } finally {
     previewLoading.value = false
   }
+}
+
+function onSaved(report) {
+  if (report) {
+    previewContent.value = report.content || ''
+    if (previewKind.value === 'daily') previewTomorrow.value = report.tomorrowPlan || ''
+  }
+  flashOk('已保存')
 }
 
 function downloadExcel() {
@@ -105,7 +105,10 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
 </script>
 
 <template>
-  <PageHeader title="报告总览" subtitle="在线预览日报、周报、月报正文，一键复制全文；如需表格文件可次要下载 Excel。" />
+  <PageHeader
+    title="报告总览"
+    subtitle="在线预览与编辑报告正文，按段落复制或一键复制全文；Excel 导出为次要选项。"
+  />
 
   <AppAlert :message="err" type="err" />
   <AppAlert :message="msg" type="ok" />
@@ -183,10 +186,14 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
     :open="previewOpen"
     :loading="previewLoading"
     :title="previewTitle"
-    :full-text="previewText"
+    :report-id="previewId"
+    :report-kind="previewKind"
+    :content="previewContent"
+    :tomorrow-plan="previewTomorrow"
     :excel-path="previewExcel"
     @close="previewOpen = false"
     @download-excel="downloadExcel"
     @copied="flashOk('已复制')"
+    @saved="onSaved"
   />
 </template>

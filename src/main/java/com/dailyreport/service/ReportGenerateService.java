@@ -377,6 +377,30 @@ public class ReportGenerateService {
         return periodReportMapper.findById(id);
     }
 
+    public DailyReport updateDailyReportText(Long id, String content, String tomorrowPlan) {
+        DailyReport existing = dailyReportMapper.findById(id);
+        if (existing == null) {
+            return null;
+        }
+        String body = content != null ? content : "";
+        String plan = tomorrowPlan != null ? tomorrowPlan : "";
+        dailyReportMapper.updateTextById(id, body, plan);
+        existing.setContent(body);
+        existing.setTomorrowPlan(plan);
+        return existing;
+    }
+
+    public PeriodReport updatePeriodReportText(Long id, String content) {
+        PeriodReport existing = periodReportMapper.findById(id);
+        if (existing == null) {
+            return null;
+        }
+        String body = content != null ? content : "";
+        periodReportMapper.updateContentById(id, body);
+        existing.setContent(body);
+        return existing;
+    }
+
     public List<PeriodReport> getPeriodReports(String type) {
         return periodReportMapper.findByType(type);
     }

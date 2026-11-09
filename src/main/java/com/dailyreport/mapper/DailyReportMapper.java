@@ -19,6 +19,10 @@ public interface DailyReportMapper {
             "WHERE report_date = #{reportDate}")
     void update(DailyReport report);
 
+    @Update("UPDATE daily_report SET content = #{content}, tomorrow_plan = #{tomorrowPlan}, " +
+            "updated_at = CURRENT_TIMESTAMP WHERE id = #{id}")
+    int updateTextById(@Param("id") Long id, @Param("content") String content, @Param("tomorrowPlan") String tomorrowPlan);
+
     @Select("SELECT * FROM daily_report WHERE id = #{id}")
     DailyReport findById(@Param("id") Long id);
 
