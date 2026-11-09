@@ -32,7 +32,8 @@ const saveErrorFlash = ref(false)
 const contentTextarea = ref(null)
 const tomorrowTextarea = ref(null)
 let flashTimer = null
-let suppressBlurSave = false
+let suppressPendingSave = false
+const awaitingClickSave = ref(false)
 
 const isDaily = computed(() => props.reportKind === 'daily')
 
@@ -64,6 +65,7 @@ function resetDraft() {
   copiedSectionId.value = null
   savedFlash.value = false
   saveErrorFlash.value = false
+  awaitingClickSave.value = false
 }
 
 watch(
@@ -116,15 +118,19 @@ function clearFlashTimer() {
   }
 }
 
-function tryClose() {
+async function tryClose() {
+  awaitingClickSave.value = false
+  if (dirty.value) {
+    await persistChanges({ exitEdit: true })
+  }
   if (dirty.value) {
     if (!window.confirm('有未保存的修改，确定关闭吗？')) return
   }
   emit('close')
 }
 
-function onBackdrop(e) {
-  if (e.target === e.currentTarget) tryClose()
+async function onBackdrop(e) {
+  if (e.target === e.currentTarget) await tryClose()
 }
 
 function onKeydown(e) {
@@ -138,29 +144,39 @@ function isTomorrowSection(section) {
 
 async function enterEditMode(focusTarget = 'content') {
   if (props.loading || editing.value) return
+  awaitingClickSave.value = false
   editing.value = true
   await nextTick()
   const el = focusTarget === 'tomorrow' ? tomorrowTextarea.value : contentTextarea.value
   el?.focus()
 }
 
-function shouldSkipBlurSave(relatedTarget) {
-  if (!relatedTarget || !(relatedTarget instanceof Element)) return false
-  return !!relatedTarget.closest('.report-drawer__toolbar')
+function onEditBlur(event) {
+  if (suppressPendingSave) return
+  const next =
+    event.relatedTarget instanceof Element ? event.relatedTarget : null
+  if (next?.classList.contains('report-edit-area')) {
+    awaitingClickSave.value = false
+    return
+  }
+  if (editing.value && dirty.value) {
+    awaitingClickSave.value = true
+  }
 }
 
-async function onEditBlur(event) {
-  if (suppressBlurSave) return
-  await nextTick()
-  if (shouldSkipBlurSave(event.relatedTarget)) return
-  if (!dirty.value || saving.value) return
-  const stayEditing =
-    event.relatedTarget instanceof Element && event.relatedTarget.classList.contains('report-edit-area')
-  await persistChanges({ exitEdit: !stayEditing })
+function onDrawerPointerDown(event) {
+  if (!awaitingClickSave.value || !dirty.value || saving.value || !editing.value) return
+  const target = event.target
+  if (!(target instanceof Element)) return
+  if (target.closest('.report-edit-area')) return
+  if (target.closest('.report-drawer__toolbar')) return
+  awaitingClickSave.value = false
+  void persistChanges({ exitEdit: false })
 }
 
 async function finishEdit() {
-  suppressBlurSave = true
+  suppressPendingSave = true
+  awaitingClickSave.value = false
   try {
     if (dirty.value) {
       await persistChanges({ exitEdit: true })
@@ -169,7 +185,7 @@ async function finishEdit() {
     }
   } finally {
     await nextTick()
-    suppressBlurSave = false
+    suppressPendingSave = false
   }
 }
 
@@ -216,6 +232,7 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
     savedContent.value = editContent.value
     savedTomorrow.value = editTomorrow.value
     if (exitEdit) editing.value = false
+    awaitingClickSave.value = false
     flashSaved(updated)
   } catch (e) {
     const msg = e.message || '保存失败'
@@ -227,12 +244,13 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
 }
 
 async function save() {
-  suppressBlurSave = true
+  suppressPendingSave = true
+  awaitingClickSave.value = false
   try {
     await persistChanges({ exitEdit: true, manual: true })
   } finally {
     await nextTick()
-    suppressBlurSave = false
+    suppressPendingSave = false
   }
 }
 </script>
@@ -248,7 +266,14 @@ async function save() {
         @keydown="onKeydown"
       >
         <Transition name="drawer-panel">
-          <aside v-if="open" class="report-drawer" role="dialog" aria-modal="true" :aria-label="title">
+          <aside
+            v-if="open"
+            class="report-drawer"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="title"
+            @pointerdown.capture="onDrawerPointerDown"
+          >
             <header class="report-drawer__head">
               <div>
                 <p class="report-drawer__eyebrow">报告预览</p>
@@ -305,7 +330,7 @@ async function save() {
                 <span>加载报告内容…</span>
               </div>
               <template v-else>
-                <p v-if="!editing" class="report-drawer__hint">双击正文区域可编辑</p>
+                <p v-if="!editing" class="report-drawer__hint">双击正文区域可编辑；编辑后失焦，再点击空白处自动保存</p>
                 <template v-if="editing">
                   <label class="field-label">正文</label>
                   <textarea
