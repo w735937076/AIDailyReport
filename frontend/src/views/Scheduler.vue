@@ -66,7 +66,7 @@ async function collectNow() {
   <AppAlert :message="err" type="err" />
   <AppAlert :message="msg" type="ok" />
 
-  <div class="row" style="grid-template-columns:1fr 1fr">
+  <div class="row row-full">
     <section class="card">
       <h2 class="card-title">调度规则</h2>
       <label class="field-check">

@@ -38,7 +38,7 @@ const pageButtons = computed(() => {
 </script>
 
 <template>
-  <div class="pager" v-if="total > 0 || page > 1">
+  <div class="pager" v-if="total > size || page > 1">
     <div class="pager-meta">
       共 <strong>{{ total }}</strong> 条 · 第 {{ rangeStart }}–{{ rangeEnd }} 条
     </div>

@@ -10,8 +10,18 @@ const labels = {
   FAILED: '失败',
   IDLE: '空闲',
 }
+
+const cls = () => {
+  const s = (props.status || '').toLowerCase()
+  if (['exported', 'completed'].includes(s)) return 'exported'
+  if (s === 'running') return 'running'
+  if (s === 'failed') return 'failed'
+  if (s === 'generated') return 'generated'
+  if (s === 'draft') return 'draft'
+  return 'draft'
+}
 </script>
 
 <template>
-  <span class="chip" :class="(status || '').toLowerCase()">{{ labels[status] || status || '—' }}</span>
+  <span class="chip" :class="cls()">{{ labels[status] || status || '—' }}</span>
 </template>

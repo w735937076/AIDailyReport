@@ -72,7 +72,7 @@ async function remove(p) {
   <AppAlert :message="msg" type="ok" />
 
   <div class="split-layout">
-    <aside class="card">
+    <aside class="card form-panel">
       <h2 class="card-title">{{ editingId ? '编辑项目' : '新增项目' }}</h2>
       <label class="field-label">名称</label>
       <input v-model="form.name" placeholder="例如：主仓库" />
@@ -92,7 +92,7 @@ async function remove(p) {
       </p>
     </aside>
 
-    <section class="card" style="margin-bottom:0">
+    <section class="card list-panel">
       <h2 class="card-title">项目列表</h2>
       <LoadingBlock v-if="pager.loading.value" />
       <EmptyState
@@ -103,27 +103,29 @@ async function remove(p) {
       />
       <template v-else>
         <div class="table-wrap">
-          <table class="data-table">
+          <table class="data-table table-fluid">
             <thead>
               <tr>
-                <th>名称</th>
-                <th>路径 / 远程</th>
-                <th>分支</th>
-                <th>状态</th>
-                <th></th>
+                <th class="col-name">名称</th>
+                <th class="col-path">路径 / 远程</th>
+                <th class="col-branch">分支</th>
+                <th class="col-status">状态</th>
+                <th class="col-actions">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="p in pager.items.value" :key="p.id">
-                <td>{{ p.name }}</td>
-                <td class="cell-ellipsis">{{ p.localPath || p.remoteUrl }}</td>
-                <td>{{ p.branch }}</td>
-                <td>
-                  <span class="chip" :class="{ exported: p.enabled }">{{ p.enabled ? '启用' : '停用' }}</span>
+                <td class="col-name">{{ p.name }}</td>
+                <td class="col-path cell-ellipsis cell-muted" :title="p.localPath || p.remoteUrl">{{ p.localPath || p.remoteUrl }}</td>
+                <td class="col-branch">{{ p.branch }}</td>
+                <td class="col-status">
+                  <span class="chip" :class="p.enabled ? 'on' : 'off'">{{ p.enabled ? '启用' : '停用' }}</span>
                 </td>
-                <td>
-                  <button type="button" class="btn btn-secondary btn-sm" @click="edit(p)">编辑</button>
-                  <button type="button" class="btn btn-danger btn-sm" @click="remove(p)">删除</button>
+                <td class="col-actions">
+                  <div class="toolbar-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" @click="edit(p)">编辑</button>
+                    <button type="button" class="btn btn-danger btn-sm" @click="remove(p)">删除</button>
+                  </div>
                 </td>
               </tr>
             </tbody>

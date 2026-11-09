@@ -82,24 +82,24 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
       />
 
       <div v-else class="table-wrap">
-        <table class="data-table">
+        <table class="data-table table-fluid">
           <thead>
             <tr>
-              <th>{{ tab === 'daily' ? '日期' : '周期' }}</th>
-              <th>状态</th>
-              <th style="width: 120px">操作</th>
+              <th class="col-path">{{ tab === 'daily' ? '日期' : '周期' }}</th>
+              <th class="col-status">状态</th>
+              <th class="col-actions">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in activePager.items.value" :key="r.id">
-              <td v-if="tab === 'daily'">{{ r.reportDate }}</td>
-              <td v-else>{{ r.startDate }} ~ {{ r.endDate }}</td>
-              <td><StatusChip :status="r.status" /></td>
-              <td>
+              <td v-if="tab === 'daily'" class="col-path">{{ r.reportDate }}</td>
+              <td v-else class="col-path">{{ r.startDate }} ~ {{ r.endDate }}</td>
+              <td class="col-status"><StatusChip :status="r.status" /></td>
+              <td class="col-actions">
                 <button
                   v-if="r.excelPath"
                   type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-ghost btn-sm"
                   @click="download(r.excelPath)"
                 >下载</button>
                 <span v-else class="text-muted">—</span>
