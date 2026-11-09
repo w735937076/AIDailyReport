@@ -6,6 +6,7 @@ import com.dailyreport.domain.AiProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class AiChatClient {
     private final ConcurrentHashMap<Long, Integer> failureCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> cooldownUntil = new ConcurrentHashMap<>();
 
+    @Autowired
     public AiChatClient(AiProviderService providerService) {
         this(providerService, Clock.systemUTC(), null);
     }
