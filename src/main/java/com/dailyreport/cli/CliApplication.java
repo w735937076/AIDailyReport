@@ -8,6 +8,7 @@ import com.dailyreport.domain.WorkItem;
 import com.dailyreport.mapper.DailyReportMapper;
 import com.dailyreport.mapper.PeriodReportMapper;
 import com.dailyreport.mapper.WorkItemMapper;
+import com.dailyreport.service.AiProviderService;
 import com.dailyreport.service.AiParseService;
 import com.dailyreport.service.AiChatClient;
 import com.dailyreport.service.GitCollectService;
@@ -43,6 +44,9 @@ public class CliApplication implements CommandLineRunner {
     private ReportGenerateService reportGenerateService;
 
     @Autowired
+    private AiProviderService aiProviderService;
+
+    @Autowired
     private WorkItemMapper workItemMapper;
 
     @Autowired
@@ -66,10 +70,10 @@ public class CliApplication implements CommandLineRunner {
     }
 
     private boolean checkConfiguration() {
-        AppConfig.AiConfig aiConfig = appConfig.getAi();
-        if (!AiChatClient.hasKey(aiConfig)) {
-            System.out.println("错误: 请先配置主模型 API Key");
-            System.out.println("编辑 config.yaml 文件，填入您的 API Key");
+        if (!aiProviderService.hasAnyConfiguredEnabledProvider()
+                && !AiChatClient.hasKey(appConfig.getAi())) {
+            System.out.println("错误: 请先配置至少一个启用的 AI 提供商 API Key");
+            System.out.println("在 Web「AI 设置」中添加，或编辑 config.yaml");
             return false;
         }
 

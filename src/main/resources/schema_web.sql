@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS app_git_project (
     UNIQUE KEY uk_project_name (name)
 );
 
+-- Legacy single-row AI config (migrated into app_ai_provider on startup; no longer written by the app)
 CREATE TABLE IF NOT EXISTS app_ai_config (
     id BIGINT PRIMARY KEY,
     primary_api_key VARCHAR(500),
@@ -33,6 +34,21 @@ CREATE TABLE IF NOT EXISTS app_ai_config (
 );
 
 INSERT IGNORE INTO app_ai_config (id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS app_ai_provider (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    base_url VARCHAR(500) NOT NULL DEFAULT 'https://api.openai.com/v1',
+    api_key VARCHAR(500),
+    model VARCHAR(100) NOT NULL,
+    connect_timeout_ms INT DEFAULT 5000,
+    read_timeout_ms INT DEFAULT 60000,
+    enabled TINYINT(1) DEFAULT 1,
+    priority INT NOT NULL DEFAULT 100,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_ai_provider_name (name)
+);
 
 CREATE TABLE IF NOT EXISTS app_scheduler_config (
     id BIGINT PRIMARY KEY,

@@ -1,5 +1,6 @@
 package com.dailyreport.config;
 
+import com.dailyreport.service.AiProviderService;
 import com.dailyreport.service.SettingsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,7 @@ import java.net.URI;
 public class WebBootstrapRunner implements ApplicationRunner {
 
     private final SettingsService settingsService;
+    private final AiProviderService aiProviderService;
 
     @Value("${server.port:18080}")
     private int serverPort;
@@ -24,12 +26,14 @@ public class WebBootstrapRunner implements ApplicationRunner {
     @Value("${app.open-browser:true}")
     private boolean openBrowserDefault;
 
-    public WebBootstrapRunner(SettingsService settingsService) {
+    public WebBootstrapRunner(SettingsService settingsService, AiProviderService aiProviderService) {
         this.settingsService = settingsService;
+        this.aiProviderService = aiProviderService;
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        aiProviderService.migrateAndBootstrap();
         settingsService.bootstrapFromYamlIfEmpty();
         boolean open = openBrowserDefault && settingsService.isOpenBrowserOnStart();
         if (!open) {

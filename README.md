@@ -17,7 +17,7 @@ Web UI (Vue 3 + Vite)  ←→  REST `/api/*`  ←→  MyBatis → MySQL
 ```
 
 - **核心表**（不可变更结构）：`git_commit_log`、`work_item`、`daily_report`、`period_report`（见 `src/main/resources/schema.sql`）
-- **Web 配置表**（新增）：`app_git_project`、`app_ai_config`、`app_scheduler_config`、`app_setting`（见 `schema_web.sql`）
+- **Web 配置表**（新增）：`app_git_project`、`app_ai_provider`（多提供商）、`app_scheduler_config`、`app_setting`（见 `schema_web.sql`）；旧 `app_ai_config` 仅用于启动时迁移
 - **CLI**：仍保留，默认关闭；设置 `app.cli.enabled=true` 可启用交互菜单
 
 ## 环境要求
@@ -65,11 +65,11 @@ cd frontend && npm run build
 |------|-----|------|
 | 报告总览 | `GET /api/reports/daily`, `GET /api/reports/period/{type}` | 列表与下载 |
 | Git 项目 | `CRUD /api/projects` | 本地路径或远程 URL + 分支 |
-| AI 设置 | `GET/PUT /api/ai` | OpenAI Chat Completions（`/v1/chat/completions`） |
+| AI 设置 | `CRUD /api/ai/providers` + `GET/PUT /api/ai/policy` | 多个 OpenAI 兼容提供商，**priority 越小越优先** |
 | 定时采集 | `GET/PUT /api/scheduler`, `POST /api/collect/now` | 默认 cron `0 0 18 * * ?`，时区 `Asia/Shanghai` |
 | 生成报告 | `POST /api/reports/{daily,weekly,monthly}/generate` | 状态与 Excel 导出 |
 
-API Key 在接口响应中**不会明文返回**；更新时传 `__UNCHANGED__` 或留空表示不修改已有密钥。
+每个提供商的 API Key 在响应中**不会明文返回**；更新时传 `__UNCHANGED__` 表示不修改已有密钥。运行时按启用状态与 priority 依次尝试，失败或冷却时自动切换下一个。
 
 ## Windows .exe 打包
 

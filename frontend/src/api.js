@@ -21,8 +21,14 @@ export const api = {
     remove: (id) => request(`/api/projects/${id}`, { method: 'DELETE' }),
   },
   ai: {
-    get: () => request('/api/ai'),
-    save: (body) => request('/api/ai', { method: 'PUT', body: JSON.stringify(body) }),
+    listProviders: () => request('/api/ai/providers'),
+    createProvider: (body) => request('/api/ai/providers', { method: 'POST', body: JSON.stringify(body) }),
+    updateProvider: (id, body) => request(`/api/ai/providers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    removeProvider: (id) => request(`/api/ai/providers/${id}`, { method: 'DELETE' }),
+    setEnabled: (id, enabled) =>
+      request(`/api/ai/providers/${id}/enabled`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+    getPolicy: () => request('/api/ai/policy'),
+    savePolicy: (body) => request('/api/ai/policy', { method: 'PUT', body: JSON.stringify(body) }),
   },
   scheduler: {
     get: () => request('/api/scheduler'),

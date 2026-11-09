@@ -1,6 +1,8 @@
 package com.dailyreport.service;
 
 import com.dailyreport.config.AppConfig;
+import com.dailyreport.domain.AiPolicy;
+import com.dailyreport.domain.AiProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -14,46 +16,61 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.Map;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Shared transport and failover policy for every report/commit AI operation. */
+/** OpenAI-compatible chat completions with priority-ordered multi-provider failover. */
 @Slf4j
 @Service
 public class AiChatClient {
-    private final AppConfig config;
-    private final Clock clock;
-    private final Function<AppConfig.AiProviderConfig, RestTemplate> clients;
-    private final ObjectMapper mapper = new ObjectMapper();
-    private int primaryFailures;
-    private long primaryRetryAt;
 
-    @Autowired
-    public AiChatClient(AppConfig config) {
-        this(config, Clock.systemUTC(), provider -> new RestTemplateBuilder()
-                .setConnectTimeout(Duration.ofMillis(Math.max(1, provider.getConnectTimeoutMs())))
-                .setReadTimeout(Duration.ofMillis(Math.max(1, provider.getReadTimeoutMs())))
-                .build());
+    private final AiProviderService providerService;
+    private final Clock clock;
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final ConcurrentHashMap<Long, RestTemplate> clients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> failureCounts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Long> cooldownUntil = new ConcurrentHashMap<>();
+
+  public AiChatClient(AiProviderService providerService) {
+        this(providerService, Clock.systemUTC());
     }
 
-    AiChatClient(AppConfig config, Clock clock,
-                 Function<AppConfig.AiProviderConfig, RestTemplate> clients) {
-        this.config = config;
+    @Autowired
+    AiChatClient(AiProviderService providerService, Clock clock) {
+        this.providerService = providerService;
         this.clock = clock;
-        this.clients = clients;
+    }
+
+    /** Test-only: override RestTemplate per provider id. */
+    AiChatClient(AiProviderService providerService, Clock clock,
+                 Map<Long, RestTemplate> testClients) {
+        this.providerService = providerService;
+        this.clock = clock;
+        if (testClients != null) {
+            this.clients.putAll(testClients);
+        }
     }
 
     public String complete(String prompt) throws Exception {
-        AppConfig.AiConfig ai = config.getAi();
-        AppConfig.FallbackConfig fallback = ai.getFallback();
-        boolean hasFallback = fallback != null && fallback.isEnabled() && hasKey(fallback);
-        Exception primaryError = null;
-        if (!hasFallback || primaryAvailable()) {
+        List<AiProvider> providers = providerService.listEnabledForRuntime();
+        if (providers.isEmpty()) {
+            throw new IllegalStateException("没有已启用且配置 API Key 的 AI 提供商，请在 Web「AI 设置」中添加");
+        }
+        AiPolicy policy = providerService.getPolicy();
+        Exception lastError = null;
+
+        for (int i = 0; i < providers.size(); i++) {
+            AiProvider provider = providers.get(i);
+            boolean hasMore = i < providers.size() - 1;
+            if (shouldSkipForCooldown(provider, providers, i)) {
+                log.info("提供商「{}」冷却中，跳过", provider.getName());
+                continue;
+            }
+            int attempts = hasMore ? 1 : Math.max(1, policy.getMaxRetries());
             try {
-                // With a backup available, switch immediately after the first failure.
-                String result = requestWithRetries(ai, prompt, hasFallback ? 1 : ai.getMaxRetries());
-                primarySucceeded();
+                String result = requestWithRetries(provider, prompt, attempts, policy);
+                providerSucceeded(provider.getId());
                 return result;
             } catch (Exception e) {
                 if (e instanceof InterruptedException) {
@@ -62,31 +79,31 @@ public class AiChatClient {
                 if (!canFailover(e)) {
                     throw e;
                 }
-                primaryFailed(ai);
-                primaryError = e;
-                if (!hasFallback) {
-                    throw new IllegalStateException("主 AI 调用失败，且未配置可用的备用模型，请检查 ai.fallback 配置及密钥", e);
+                providerFailed(provider.getId(), policy);
+                lastError = e;
+                if (!hasMore) {
+                    throw e;
                 }
-                log.warn("主模型 {} 失败（{}），切换至 {}", ai.getModel(),
-                        e.getClass().getSimpleName(), fallback.getModel());
+                log.warn("提供商「{}」失败（{}），尝试下一个", provider.getName(), e.getClass().getSimpleName());
             }
-        } else {
-            log.info("主模型 {} 冷却中，本次使用备用模型 {}", ai.getModel(), fallback.getModel());
         }
-        try {
-            return requestWithRetries(fallback, prompt, ai.getMaxRetries());
-        } catch (Exception e) {
-            if (e instanceof InterruptedException) {
-                throw e;
-            }
-            IllegalStateException failure = new IllegalStateException(
-                    "备用 AI 模型 " + fallback.getModel() + " 调用失败"
-                            + (primaryError == null ? "（主模型冷却中）" : "（主模型也调用失败）"), e);
-            if (primaryError != null) {
-                failure.addSuppressed(primaryError);
-            }
-            throw failure;
+        IllegalStateException failure = new IllegalStateException("所有已启用的 AI 提供商均调用失败", lastError);
+        if (lastError != null) {
+            failure.initCause(lastError);
         }
+        throw failure;
+    }
+
+    private boolean shouldSkipForCooldown(AiProvider provider, List<AiProvider> all, int index) {
+        if (providerAvailable(provider.getId())) {
+            return false;
+        }
+        for (int j = index + 1; j < all.size(); j++) {
+            if (providerAvailable(all.get(j).getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean hasKey(AppConfig.AiProviderConfig provider) {
@@ -94,62 +111,61 @@ public class AiChatClient {
         return key != null && !key.isBlank() && !key.startsWith("your-") && !key.startsWith("${");
     }
 
-    private synchronized boolean primaryAvailable() {
-        if (primaryRetryAt > 0 && clock.millis() >= primaryRetryAt) {
-            log.info("主模型 {} 冷却结束，尝试恢复调用", config.getAi().getModel());
+    private boolean providerAvailable(Long id) {
+        Long until = cooldownUntil.get(id);
+        if (until != null && clock.millis() < until) {
+            return false;
         }
-        return clock.millis() >= primaryRetryAt;
+        if (until != null && clock.millis() >= until) {
+            log.info("提供商 id={} 冷却结束", id);
+        }
+        return true;
     }
 
-    private synchronized void primarySucceeded() {
-        if (primaryFailures > 0) {
-            log.info("主模型 {} 调用恢复成功，重置失败计数", config.getAi().getModel());
-        }
-        primaryFailures = 0;
-        primaryRetryAt = 0;
+    private void providerSucceeded(Long id) {
+        failureCounts.remove(id);
+        cooldownUntil.remove(id);
     }
 
-    private synchronized void primaryFailed(AppConfig.AiConfig ai) {
-        if (++primaryFailures >= Math.max(1, ai.getFailureThreshold())) {
-            primaryRetryAt = clock.millis() + Math.max(1, ai.getCooldownMs());
-            log.warn("主模型进入冷却，{} ms 后尝试恢复", ai.getCooldownMs());
+    private void providerFailed(Long id, AiPolicy policy) {
+        int failures = failureCounts.merge(id, 1, Integer::sum);
+        if (failures >= Math.max(1, policy.getFailureThreshold())) {
+            long until = clock.millis() + Math.max(1, policy.getCooldownMs());
+            cooldownUntil.put(id, until);
+            log.warn("提供商 id={} 进入冷却，{} ms 后恢复", id, policy.getCooldownMs());
         }
     }
 
-    private String requestWithRetries(AppConfig.AiProviderConfig provider, String prompt, int attempts)
+    private String requestWithRetries(AiProvider provider, String prompt, int attempts, AiPolicy policy)
             throws Exception {
+        AppConfig.AiProviderConfig cfg = provider.toProviderConfig();
         for (int attempt = 1; ; attempt++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("AI 调用已取消");
             }
-            String role = provider == config.getAi() ? "主模型" : "备用模型";
             long startedAt = System.nanoTime();
             log.info("AI 请求开始：{}，model={}，尝试={}/{}，连接超时={}ms，读取超时={}ms",
-                    role, provider.getModel(), attempt, Math.max(1, attempts),
-                    provider.getConnectTimeoutMs(), provider.getReadTimeoutMs());
+                    provider.getName(), provider.getModel(), attempt, attempts,
+                    cfg.getConnectTimeoutMs(), cfg.getReadTimeoutMs());
             try {
-                String result = request(provider, prompt);
+                String result = request(cfg, prompt, provider.getId());
                 log.info("AI 请求成功：{}，model={}，耗时={}ms，返回字符数={}",
-                        role, provider.getModel(), (System.nanoTime() - startedAt) / 1_000_000, result.length());
+                        provider.getName(), provider.getModel(),
+                        (System.nanoTime() - startedAt) / 1_000_000, result.length());
                 return result;
             } catch (Exception e) {
                 String reason = e instanceof RestClientResponseException http
                         ? "HTTP " + http.getStatusCode().value()
                         : e.getClass().getSimpleName();
                 log.warn("AI 请求失败：{}，model={}，尝试={}/{}，耗时={}ms，原因={}",
-                        role, provider.getModel(), attempt, Math.max(1, attempts),
+                        provider.getName(), provider.getModel(), attempt, attempts,
                         (System.nanoTime() - startedAt) / 1_000_000, reason);
-                if (attempt >= Math.max(1, attempts) || !isTransient(e)) {
+                if (attempt >= attempts || !isTransient(e)) {
                     throw e;
                 }
-                log.warn("模型 {} 调用失败（{}），重试 {}/{}", provider.getModel(),
+                log.warn("提供商 {} 调用失败（{}），重试 {}/{}", provider.getName(),
                         e.getClass().getSimpleName(), attempt, attempts);
-                try {
-                    Thread.sleep((long) Math.max(0, config.getAi().getRetryDelayMs()) * attempt);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw interrupted;
-                }
+                Thread.sleep((long) Math.max(0, policy.getRetryDelayMs()) * attempt);
             }
         }
     }
@@ -176,9 +192,9 @@ public class AiChatClient {
         return false;
     }
 
-    private String request(AppConfig.AiProviderConfig provider, String prompt) throws Exception {
+    private String request(AppConfig.AiProviderConfig provider, String prompt, Long providerId) throws Exception {
         if (!hasKey(provider)) {
-            throw new IllegalArgumentException("请配置模型 " + provider.getModel() + " 的 API Key");
+            throw new IllegalArgumentException("请配置提供商的 API Key");
         }
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -186,7 +202,11 @@ public class AiChatClient {
         Map<String, Object> body = Map.of("model", provider.getModel(), "messages",
                 List.of(Map.of("role", "user", "content", prompt)));
         String url = provider.getBaseUrl().replaceAll("/+$", "") + "/chat/completions";
-        ResponseEntity<String> response = clients.apply(provider).exchange(
+        RestTemplate client = clients.computeIfAbsent(providerId, id -> new RestTemplateBuilder()
+                .setConnectTimeout(Duration.ofMillis(Math.max(1, provider.getConnectTimeoutMs())))
+                .setReadTimeout(Duration.ofMillis(Math.max(1, provider.getReadTimeoutMs())))
+                .build());
+        ResponseEntity<String> response = client.exchange(
                 url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
         try {
             JsonNode content = mapper.readTree(response.getBody()).path("choices")
@@ -195,7 +215,7 @@ public class AiChatClient {
                 return content.asText();
             }
         } catch (Exception ignored) {
-            // Do not include provider response bodies, prompts or credentials in error logs.
+            // Do not log response bodies or credentials.
         }
         throw new InvalidResponseException();
     }
