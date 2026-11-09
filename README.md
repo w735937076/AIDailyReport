@@ -1,0 +1,2 @@
+# AIDailyReport
+基于本地git提交记录完成的日报周报月报生成神器
