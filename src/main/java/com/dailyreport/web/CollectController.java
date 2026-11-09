@@ -2,7 +2,7 @@ package com.dailyreport.web;
 
 import com.dailyreport.service.CollectOrchestrationService;
 import com.dailyreport.web.dto.ApiResponse;
-import com.dailyreport.web.dto.CollectResult;
+import com.dailyreport.web.dto.StartJobResponse;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -18,13 +18,14 @@ public class CollectController {
     }
 
     @PostMapping("/now")
-    public ApiResponse<CollectResult> collectNow() {
-        return ApiResponse.ok(collectOrchestrationService.collectAll());
+    public ApiResponse<StartJobResponse> collectNow() {
+        String jobId = collectOrchestrationService.startCollectJob();
+        return ApiResponse.ok(new StartJobResponse(jobId));
     }
 
     @GetMapping("/status")
     public ApiResponse<Map<String, Object>> status() {
-        CollectResult last = collectOrchestrationService.getLastResult();
+        var last = collectOrchestrationService.getLastResult();
         return ApiResponse.ok(Map.of(
                 "status", collectOrchestrationService.getStatus(),
                 "lastResult", last != null ? last : Map.of()

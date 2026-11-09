@@ -1,43 +1,77 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { api } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import AppAlert from '../components/AppAlert.vue'
 import StatusChip from '../components/StatusChip.vue'
+import JobProgressPanel from '../components/JobProgressPanel.vue'
+import { useJobRunner } from '../composables/useJobRunner'
 
 const date = ref(new Date().toISOString().slice(0, 10))
 const tomorrowPlan = ref('')
 const nonCodeWork = ref('')
-const status = ref('IDLE')
 const msg = ref('')
 const err = ref('')
-const loading = ref(false)
+const activeLabel = ref('')
+const { running, job, status, error: jobError, run } = useJobRunner()
+let dismissTimer = null
 
-async function run(fn, label) {
-  loading.value = true
+watch(jobError, (v) => {
+  if (v) err.value = v
+})
+
+function flashSuccess(text) {
+  msg.value = text
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = setTimeout(() => {
+    msg.value = ''
+  }, 5000)
+}
+
+function body() {
+  return { date: date.value, tomorrowPlan: tomorrowPlan.value, nonCodeWork: nonCodeWork.value }
+}
+
+async function generateDaily() {
+  await runReport(api.reports.generateDaily, '日报')
+}
+
+async function generateWeekly() {
+  await runReport(api.reports.generateWeekly, '周报')
+}
+
+async function generateMonthly() {
+  await runReport(api.reports.generateMonthly, '月报')
+}
+
+async function runReport(fn, label) {
   err.value = ''
   msg.value = ''
-  status.value = 'RUNNING'
+  activeLabel.value = label
   try {
-    const body = { date: date.value, tomorrowPlan: tomorrowPlan.value, nonCodeWork: nonCodeWork.value }
-    const result = await fn(body)
-    status.value = 'COMPLETED'
-    msg.value = `${label}成功${result?.excelPath ? '：' + result.excelPath : ''}`
-  } catch (e) {
-    status.value = 'FAILED'
-    err.value = e.message
+    const finished = await run(() => fn(body()))
+    const path = finished?.result?.excelPath
+    flashSuccess(`${label}生成成功${path ? '：' + path : ''}`)
+  } catch {
+    /* panel + err */
   } finally {
-    loading.value = false
+    activeLabel.value = ''
   }
 }
 
 async function exportExcel() {
   err.value = ''
+  msg.value = ''
+  activeLabel.value = '导出'
   try {
-    const { path } = await api.reports.exportDailyExcel(date.value)
-    window.open(api.downloadUrl(path), '_blank')
-  } catch (e) {
-    err.value = e.message
+    const finished = await run(() => api.reports.exportDailyExcel(date.value))
+    const path = finished?.result?.path
+    if (path) window.open(api.downloadUrl(path), '_blank')
+    flashSuccess('Excel 导出完成')
+  } catch {
+    /* panel + err */
+  } finally {
+    activeLabel.value = ''
   }
 }
 </script>
@@ -56,7 +90,7 @@ async function exportExcel() {
     <div class="row">
       <div>
         <label class="field-label">基准日期</label>
-        <input v-model="date" type="date" />
+        <input v-model="date" type="date" :disabled="running" />
       </div>
       <div>
         <label class="field-label">任务状态</label>
@@ -66,14 +100,27 @@ async function exportExcel() {
       </div>
     </div>
     <label class="field-label">今日非代码工作（可选）</label>
-    <textarea v-model="nonCodeWork" placeholder="会议、文档、沟通等" />
+    <textarea v-model="nonCodeWork" :disabled="running" placeholder="会议、文档、沟通等" />
     <label class="field-label">明日计划（日报用）</label>
-    <textarea v-model="tomorrowPlan" placeholder="每行一条" />
+    <textarea v-model="tomorrowPlan" :disabled="running" placeholder="每行一条" />
     <div class="action-group">
-      <button type="button" class="btn" :disabled="loading" @click="run(api.reports.generateDaily, '日报')">生成日报</button>
-      <button type="button" class="btn" :disabled="loading" @click="run(api.reports.generateWeekly, '周报')">生成周报</button>
-      <button type="button" class="btn" :disabled="loading" @click="run(api.reports.generateMonthly, '月报')">生成月报</button>
-      <button type="button" class="btn btn-secondary" :disabled="loading" @click="exportExcel">导出日报 Excel</button>
+      <button type="button" class="btn" :disabled="running" @click="generateDaily">
+        <span v-if="running && activeLabel === '日报'" class="spinner spinner--accent" />
+        {{ running && activeLabel === '日报' ? '生成中…' : '生成日报' }}
+      </button>
+      <button type="button" class="btn" :disabled="running" @click="generateWeekly">
+        <span v-if="running && activeLabel === '周报'" class="spinner spinner--accent" />
+        {{ running && activeLabel === '周报' ? '生成中…' : '生成周报' }}
+      </button>
+      <button type="button" class="btn" :disabled="running" @click="generateMonthly">
+        <span v-if="running && activeLabel === '月报'" class="spinner spinner--accent" />
+        {{ running && activeLabel === '月报' ? '生成中…' : '生成月报' }}
+      </button>
+      <button type="button" class="btn btn-secondary" :disabled="running" @click="exportExcel">
+        <span v-if="running && activeLabel === '导出'" class="spinner spinner--accent" />
+        {{ running && activeLabel === '导出' ? '导出中…' : '导出日报 Excel' }}
+      </button>
     </div>
+    <JobProgressPanel :job="job" :visible="running || status === 'COMPLETED' || status === 'FAILED'" />
   </section>
 </template>

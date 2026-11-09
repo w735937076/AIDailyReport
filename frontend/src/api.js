@@ -41,6 +41,9 @@ export const api = {
     get: () => request('/api/scheduler'),
     save: (body) => request('/api/scheduler', { method: 'PUT', body: JSON.stringify(body) }),
   },
+  jobs: {
+    get: (jobId) => request(`/api/jobs/${jobId}`),
+  },
   collect: {
     now: () => request('/api/collect/now', { method: 'POST' }),
     status: () => request('/api/collect/status'),

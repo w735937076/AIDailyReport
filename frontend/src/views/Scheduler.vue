@@ -1,9 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import AppAlert from '../components/AppAlert.vue'
 import StatusChip from '../components/StatusChip.vue'
+import JobProgressPanel from '../components/JobProgressPanel.vue'
+import { useJobRunner } from '../composables/useJobRunner'
 
 const form = ref({
   enabled: true,
@@ -11,11 +13,11 @@ const form = ref({
   timezone: 'Asia/Shanghai',
   gitFilterUsername: '',
 })
-const collectStatus = ref('IDLE')
 const msg = ref('')
 const err = ref('')
-const loading = ref(false)
 const saving = ref(false)
+const { running, job, status, error: jobError, run } = useJobRunner()
+let dismissTimer = null
 
 onMounted(async () => {
   try {
@@ -26,12 +28,24 @@ onMounted(async () => {
   }
 })
 
+watch(jobError, (v) => {
+  if (v) err.value = v
+})
+
+function flashSuccess(text) {
+  msg.value = text
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = setTimeout(() => {
+    msg.value = ''
+  }, 5000)
+}
+
 async function save() {
   err.value = ''
   saving.value = true
   try {
     await api.scheduler.save(form.value)
-    msg.value = '调度配置已保存（默认每天 18:00 采集）'
+    flashSuccess('调度配置已保存（默认每天 18:00 采集）')
   } catch (e) {
     err.value = e.message
   } finally {
@@ -40,19 +54,19 @@ async function save() {
 }
 
 async function collectNow() {
-  loading.value = true
   err.value = ''
   msg.value = ''
-  collectStatus.value = 'RUNNING'
   try {
-    const result = await api.collect.now()
-    msg.value = result.message || '采集完成'
-    collectStatus.value = 'COMPLETED'
-  } catch (e) {
-    err.value = e.message
-    collectStatus.value = 'FAILED'
-  } finally {
-    loading.value = false
+    const finished = await run(() => api.collect.now())
+    const r = finished?.result
+    const text =
+      finished?.message ||
+      (r
+        ? `采集完成：${r.reposProcessed} 个仓库，新增 ${r.commitsCollected} 条提交，解析 ${r.commitsParsed} 条工作项`
+        : '采集完成')
+    flashSuccess(text)
+  } catch {
+    /* jobError + panel */
   }
 }
 </script>
@@ -86,11 +100,13 @@ async function collectNow() {
     <section class="card">
       <h2 class="card-title">手动采集</h2>
       <p class="field-hint" style="margin-bottom:1.25rem">立即从所有已启用项目执行一轮采集与 AI 解析。</p>
-      <button type="button" class="btn" :disabled="loading" @click="collectNow">
-        {{ loading ? '采集中…' : '立即采集' }}
+      <button type="button" class="btn" :disabled="running" @click="collectNow">
+        <span v-if="running" class="spinner spinner--accent" />
+        {{ running ? '采集中…' : '立即采集' }}
       </button>
-      <p v-if="collectStatus !== 'IDLE'" style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem">
-        状态 <StatusChip :status="collectStatus" />
+      <JobProgressPanel :job="job" :visible="running || status === 'COMPLETED' || status === 'FAILED'" />
+      <p v-if="status !== 'IDLE'" style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem">
+        状态 <StatusChip :status="status" />
       </p>
     </section>
   </div>
