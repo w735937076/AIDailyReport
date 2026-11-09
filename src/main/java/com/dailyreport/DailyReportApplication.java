@@ -2,7 +2,7 @@ package com.dailyreport;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
+import org.mybatis.spring.annotation.MapperScan;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 @SpringBootApplication
-@EnableScheduling
+@MapperScan("com.dailyreport.mapper")
 public class DailyReportApplication {
 
     public static void main(String[] args) {

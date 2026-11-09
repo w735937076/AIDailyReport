@@ -1,6 +1,8 @@
 /config.local.yml
 /config.yaml
+/frontend/node_modules/
 /target/
+/dist/
 /logs/
 /output/
 /data/

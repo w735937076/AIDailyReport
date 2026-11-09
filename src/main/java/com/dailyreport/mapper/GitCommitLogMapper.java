@@ -20,6 +20,9 @@ public interface GitCommitLogMapper {
     @Select("SELECT * FROM git_commit_log WHERE parsed = 0")
     List<GitCommitLog> findUnparsed();
 
+    @Select("SELECT * FROM git_commit_log WHERE parsed = 0 AND repo_name = #{repoName}")
+    List<GitCommitLog> findUnparsedByRepo(@Param("repoName") String repoName);
+
     @Select("SELECT * FROM git_commit_log WHERE commit_time >= #{startTime} AND commit_time < #{endTime}")
     List<GitCommitLog> findByTimeRange(@Param("startTime") LocalDateTime startTime, @Param("endTime") LocalDateTime endTime);
 

@@ -1,0 +1,47 @@
+const BASE = ''
+
+async function request(path, options = {}) {
+  const res = await fetch(BASE + path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  })
+  const json = await res.json()
+  if (!json.success && json.message) {
+    throw new Error(json.message)
+  }
+  return json.data
+}
+
+export const api = {
+  health: () => request('/api/health'),
+  projects: {
+    list: () => request('/api/projects'),
+    create: (body) => request('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, body) => request(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    remove: (id) => request(`/api/projects/${id}`, { method: 'DELETE' }),
+  },
+  ai: {
+    get: () => request('/api/ai'),
+    save: (body) => request('/api/ai', { method: 'PUT', body: JSON.stringify(body) }),
+  },
+  scheduler: {
+    get: () => request('/api/scheduler'),
+    save: (body) => request('/api/scheduler', { method: 'PUT', body: JSON.stringify(body) }),
+  },
+  collect: {
+    now: () => request('/api/collect/now', { method: 'POST' }),
+    status: () => request('/api/collect/status'),
+  },
+  reports: {
+    dailyList: () => request('/api/reports/daily'),
+    periodList: (type) => request(`/api/reports/period/${type}`),
+    generateDaily: (body) => request('/api/reports/daily/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
+    generateWeekly: (body) => request('/api/reports/weekly/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
+    generateMonthly: (body) => request('/api/reports/monthly/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
+    exportDailyExcel: (date) => request(`/api/reports/daily/${date}/export-excel`, { method: 'POST' }),
+    status: () => request('/api/reports/status'),
+  },
+  downloadUrl: (path) => `/api/export/download?path=${encodeURIComponent(path)}`,
+}
+
+export const UNCHANGED_SECRET = '__UNCHANGED__'

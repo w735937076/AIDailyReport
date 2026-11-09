@@ -12,6 +12,10 @@ spring:
     init:
       mode: never
 
+  web:
+    resources:
+      static-locations: classpath:/static/
+
 server:
   port: 18080
 
@@ -30,3 +34,9 @@ logging:
 
 app:
   config-file: ./config.yaml
+  cli:
+    enabled: false
+  open-browser: true
+  scheduler:
+    cron: "0 0 18 * * ?"
+    timezone: Asia/Shanghai

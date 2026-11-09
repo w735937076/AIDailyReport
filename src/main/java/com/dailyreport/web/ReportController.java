@@ -1,0 +1,136 @@
+package com.dailyreport.web;
+
+import com.dailyreport.domain.DailyReport;
+import com.dailyreport.domain.PeriodReport;
+import com.dailyreport.domain.WorkItem;
+import com.dailyreport.mapper.WorkItemMapper;
+import com.dailyreport.service.ExcelExportService;
+import com.dailyreport.service.ReportGenerateService;
+import com.dailyreport.web.dto.ApiResponse;
+import com.dailyreport.web.dto.GenerateReportRequest;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+@RestController
+@RequestMapping("/api/reports")
+public class ReportController {
+
+    private final ReportGenerateService reportGenerateService;
+    private final WorkItemMapper workItemMapper;
+    private final ExcelExportService excelExportService;
+    private final AtomicReference<String> generateStatus = new AtomicReference<>("IDLE");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    public ReportController(ReportGenerateService reportGenerateService,
+                            WorkItemMapper workItemMapper,
+                            ExcelExportService excelExportService) {
+        this.reportGenerateService = reportGenerateService;
+        this.workItemMapper = workItemMapper;
+        this.excelExportService = excelExportService;
+    }
+
+    @GetMapping("/daily")
+    public ApiResponse<List<DailyReport>> listDaily() {
+        return ApiResponse.ok(reportGenerateService.getDailyReports(
+                LocalDate.now().minusYears(2), LocalDate.now().plusDays(1)));
+    }
+
+    @GetMapping("/daily/{date}")
+    public ApiResponse<DailyReport> getDaily(@PathVariable String date) {
+        return ApiResponse.ok(reportGenerateService.getDailyReport(LocalDate.parse(date, DATE_FORMAT)));
+    }
+
+    @GetMapping("/period/{type}")
+    public ApiResponse<List<PeriodReport>> listPeriod(@PathVariable String type) {
+        return ApiResponse.ok(reportGenerateService.getPeriodReports(type.toUpperCase()));
+    }
+
+    @GetMapping("/status")
+    public ApiResponse<Map<String, String>> status() {
+        return ApiResponse.ok(Map.of("status", generateStatus.get()));
+    }
+
+    @PostMapping("/daily/generate")
+    public ApiResponse<DailyReport> generateDaily(@RequestBody(required = false) GenerateReportRequest req) {
+        generateStatus.set("RUNNING");
+        try {
+            LocalDate date = req != null && req.getDate() != null
+                    ? LocalDate.parse(req.getDate(), DATE_FORMAT) : LocalDate.now();
+            String tomorrow = req != null && req.getTomorrowPlan() != null ? req.getTomorrowPlan() : "待填写";
+            String nonCode = req != null && req.getNonCodeWork() != null ? req.getNonCodeWork() : "";
+            DailyReport report = reportGenerateService.generateDailyReport(date, tomorrow, nonCode);
+            generateStatus.set("COMPLETED");
+            return ApiResponse.ok(report);
+        } catch (Exception e) {
+            generateStatus.set("FAILED");
+            throw new RuntimeException(e);
+        }
+    }
+
+    @PostMapping("/weekly/generate")
+    public ApiResponse<PeriodReport> generateWeekly(@RequestBody(required = false) GenerateReportRequest req) {
+        generateStatus.set("RUNNING");
+        try {
+            LocalDate start = req != null && req.getDate() != null
+                    ? LocalDate.parse(req.getDate(), DATE_FORMAT)
+                    : LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            PeriodReport report = reportGenerateService.generateWeeklyReport(start);
+            generateStatus.set("COMPLETED");
+            return ApiResponse.ok(report);
+        } catch (Exception e) {
+            generateStatus.set("FAILED");
+            throw new RuntimeException(e);
+        }
+    }
+
+    @PostMapping("/monthly/generate")
+    public ApiResponse<PeriodReport> generateMonthly(@RequestBody(required = false) GenerateReportRequest req) {
+        generateStatus.set("RUNNING");
+        try {
+            LocalDate start = req != null && req.getDate() != null
+                    ? LocalDate.parse(req.getDate(), DATE_FORMAT).withDayOfMonth(1)
+                    : LocalDate.now().withDayOfMonth(1);
+            PeriodReport report = reportGenerateService.generateMonthlyReport(start);
+            generateStatus.set("COMPLETED");
+            return ApiResponse.ok(report);
+        } catch (Exception e) {
+            generateStatus.set("FAILED");
+            throw new RuntimeException(e);
+        }
+    }
+
+    @PostMapping("/daily/{date}/export-excel")
+    public ApiResponse<Map<String, String>> exportDailyExcel(@PathVariable String date) throws Exception {
+        LocalDate d = LocalDate.parse(date, DATE_FORMAT);
+        DailyReport report = reportGenerateService.getDailyReport(d);
+        List<WorkItem> items = workItemMapper.findByDateOrdered(d);
+        String path = excelExportService.exportDaily(d, items,
+                report != null ? report.getTomorrowPlan() : "",
+                report != null ? report.getRawDataJson() : "");
+        Map<String, String> result = new HashMap<>();
+        result.put("path", path);
+        return ApiResponse.ok(result);
+    }
+
+    @PostMapping("/weekly/export-excel")
+    public ApiResponse<Map<String, String>> exportWeeklyExcel(@RequestBody(required = false) GenerateReportRequest req) throws Exception {
+        LocalDate start = req != null && req.getDate() != null
+                ? LocalDate.parse(req.getDate(), DATE_FORMAT)
+                : LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate end = start.plusDays(6);
+        List<WorkItem> items = workItemMapper.findByDateRange(start, end);
+        PeriodReport report = reportGenerateService.getPeriodReports("WEEK").stream()
+                .filter(r -> r.getStartDate().equals(start)).findFirst().orElse(null);
+        String path = excelExportService.exportWeekly(start, end, items,
+                report != null ? report.getContent() : "");
+        return ApiResponse.ok(Map.of("path", path));
+    }
+}

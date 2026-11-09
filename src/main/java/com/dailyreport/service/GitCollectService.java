@@ -37,6 +37,9 @@ public class GitCollectService {
     @Autowired
     private AppConfig appConfig;
 
+    @Autowired
+    private SettingsService settingsService;
+
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public int collectFromRepo(AppConfig.RepoConfig repoConfig) {
@@ -121,7 +124,10 @@ public class GitCollectService {
         String authorName = commit.getAuthorIdent().getName();
 
         // 如果配置了用户过滤，只采集该用户的提交
-        String filterUser = appConfig.getGit().getAccount().getUsername();
+        String filterUser = settingsService.getGitFilterUsername();
+        if (filterUser == null || filterUser.isBlank()) {
+            filterUser = appConfig.getGit().getAccount().getUsername();
+        }
         if (filterUser != null && !filterUser.isEmpty()
                 && !authorName.equalsIgnoreCase(filterUser)) {
             log.debug("跳过非用户 {} 的提交: {} by {}", filterUser, commitId, authorName);
@@ -197,6 +203,10 @@ public class GitCollectService {
 
     public List<GitCommitLog> getUnparsedCommits() {
         return commitLogMapper.findUnparsed();
+    }
+
+    public List<GitCommitLog> getUnparsedCommitsForRepo(String repoName) {
+        return commitLogMapper.findUnparsedByRepo(repoName);
     }
 
     public void markAsParsed(Long id) {
