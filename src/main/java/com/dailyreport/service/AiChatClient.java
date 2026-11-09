@@ -6,7 +6,6 @@ import com.dailyreport.domain.AiProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -32,17 +31,11 @@ public class AiChatClient {
     private final ConcurrentHashMap<Long, Integer> failureCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> cooldownUntil = new ConcurrentHashMap<>();
 
-  public AiChatClient(AiProviderService providerService) {
-        this(providerService, Clock.systemUTC());
+    public AiChatClient(AiProviderService providerService) {
+        this(providerService, Clock.systemUTC(), null);
     }
 
-    @Autowired
-    AiChatClient(AiProviderService providerService, Clock clock) {
-        this.providerService = providerService;
-        this.clock = clock;
-    }
-
-    /** Test-only: override RestTemplate per provider id. */
+    /** Package-private for unit tests (injectable Clock / RestTemplate). */
     AiChatClient(AiProviderService providerService, Clock clock,
                  Map<Long, RestTemplate> testClients) {
         this.providerService = providerService;
