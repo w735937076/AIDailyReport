@@ -32,9 +32,6 @@ const saveErrorFlash = ref(false)
 const contentTextarea = ref(null)
 const tomorrowTextarea = ref(null)
 let flashTimer = null
-let suppressPendingSave = false
-/** Set on textarea blur; cleared after auto-save or explicit save. */
-const pendingAutoSaveAfterClick = ref(false)
 
 const isDaily = computed(() => props.reportKind === 'daily')
 
@@ -66,7 +63,6 @@ function resetDraft() {
   copiedSectionId.value = null
   savedFlash.value = false
   saveErrorFlash.value = false
-  pendingAutoSaveAfterClick.value = false
 }
 
 watch(
@@ -120,7 +116,6 @@ function clearFlashTimer() {
 }
 
 async function tryClose() {
-  pendingAutoSaveAfterClick.value = false
   if (dirty.value) {
     await persistChanges({ exitEdit: true })
   }
@@ -145,49 +140,30 @@ function isTomorrowSection(section) {
 
 async function enterEditMode(focusTarget = 'content') {
   if (props.loading || editing.value) return
-  pendingAutoSaveAfterClick.value = false
   editing.value = true
   await nextTick()
   const el = focusTarget === 'tomorrow' ? tomorrowTextarea.value : contentTextarea.value
   el?.focus()
 }
 
-function onEditBlur(event) {
-  if (suppressPendingSave) return
-  const next = event.relatedTarget instanceof Element ? event.relatedTarget : null
-  if (next?.classList.contains('report-edit-area')) {
-    pendingAutoSaveAfterClick.value = false
-    return
-  }
-  if (next?.closest('.report-drawer__toolbar')) {
-    pendingAutoSaveAfterClick.value = false
-    return
-  }
-  pendingAutoSaveAfterClick.value = editing.value && dirty.value
-}
-
-function onDrawerClick(event) {
-  if (!pendingAutoSaveAfterClick.value || !dirty.value || saving.value || !editing.value) return
+async function onDrawerOutsideTextareaClick(event) {
+  if (!editing.value || saving.value) return
   const target = event.target
   if (!(target instanceof Element)) return
   if (target.closest('.report-edit-area')) return
-  if (target.closest('.report-drawer__toolbar')) return
-  pendingAutoSaveAfterClick.value = false
-  void persistChanges({ exitEdit: false })
+  if (target.closest('button')) return
+  if (dirty.value) {
+    await persistChanges({ exitEdit: true })
+  } else {
+    editing.value = false
+  }
 }
 
 async function finishEdit() {
-  suppressPendingSave = true
-  pendingAutoSaveAfterClick.value = false
-  try {
-    if (dirty.value) {
-      await persistChanges({ exitEdit: true })
-    } else {
-      editing.value = false
-    }
-  } finally {
-    await nextTick()
-    suppressPendingSave = false
+  if (dirty.value) {
+    await persistChanges({ exitEdit: true })
+  } else {
+    editing.value = false
   }
 }
 
@@ -234,7 +210,6 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
     savedContent.value = editContent.value
     savedTomorrow.value = editTomorrow.value
     if (exitEdit) editing.value = false
-    pendingAutoSaveAfterClick.value = false
     flashSaved(updated)
   } catch (e) {
     const msg = e.message || '保存失败'
@@ -246,14 +221,7 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
 }
 
 async function save() {
-  suppressPendingSave = true
-  pendingAutoSaveAfterClick.value = false
-  try {
-    await persistChanges({ exitEdit: true, manual: true })
-  } finally {
-    await nextTick()
-    suppressPendingSave = false
-  }
+  await persistChanges({ exitEdit: true, manual: true })
 }
 </script>
 
@@ -274,7 +242,7 @@ async function save() {
             role="dialog"
             aria-modal="true"
             :aria-label="title"
-            @click.capture="onDrawerClick"
+            @click="onDrawerOutsideTextareaClick"
           >
             <header class="report-drawer__head">
               <div>
@@ -284,7 +252,7 @@ async function save() {
               <button type="button" class="btn btn-ghost btn-sm" aria-label="关闭" @click="tryClose">关闭</button>
             </header>
 
-            <div class="report-drawer__toolbar">
+            <div class="report-drawer__toolbar" @click.stop>
               <button type="button" class="btn" :disabled="loading" @click="copyAll">复制全文</button>
               <span v-if="copiedAll" class="report-drawer__toast" role="status">已复制</span>
               <span v-if="savedFlash" class="report-drawer__toast" role="status">已保存</span>
@@ -332,7 +300,8 @@ async function save() {
                 <span>加载报告内容…</span>
               </div>
               <template v-else>
-                <p v-if="!editing" class="report-drawer__hint">双击正文可编辑；改完后点击输入框外任意处即自动保存（离开输入框的那次点击即可）</p>
+                <p v-if="!editing" class="report-drawer__hint">双击正文可编辑</p>
+                <p v-else class="report-drawer__hint">点击输入框外任意区域将保存（若有修改）并返回预览</p>
                 <template v-if="editing">
                   <label class="field-label">正文</label>
                   <textarea
@@ -341,7 +310,7 @@ async function save() {
                     class="report-edit-area"
                     rows="16"
                     spellcheck="false"
-                    @blur="onEditBlur"
+                    @click.stop
                   />
                   <template v-if="isDaily">
                     <label class="field-label" style="margin-top: 0.85rem">明日计划</label>
@@ -351,7 +320,7 @@ async function save() {
                       class="report-edit-area"
                       rows="6"
                       spellcheck="false"
-                      @blur="onEditBlur"
+                      @click.stop
                     />
                   </template>
                 </template>
