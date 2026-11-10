@@ -33,7 +33,8 @@ const contentTextarea = ref(null)
 const tomorrowTextarea = ref(null)
 let flashTimer = null
 let suppressPendingSave = false
-const awaitingClickSave = ref(false)
+/** Set on textarea blur; cleared after auto-save or explicit save. */
+const pendingAutoSaveAfterClick = ref(false)
 
 const isDaily = computed(() => props.reportKind === 'daily')
 
@@ -65,7 +66,7 @@ function resetDraft() {
   copiedSectionId.value = null
   savedFlash.value = false
   saveErrorFlash.value = false
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
 }
 
 watch(
@@ -119,7 +120,7 @@ function clearFlashTimer() {
 }
 
 async function tryClose() {
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
   if (dirty.value) {
     await persistChanges({ exitEdit: true })
   }
@@ -144,7 +145,7 @@ function isTomorrowSection(section) {
 
 async function enterEditMode(focusTarget = 'content') {
   if (props.loading || editing.value) return
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
   editing.value = true
   await nextTick()
   const el = focusTarget === 'tomorrow' ? tomorrowTextarea.value : contentTextarea.value
@@ -153,30 +154,31 @@ async function enterEditMode(focusTarget = 'content') {
 
 function onEditBlur(event) {
   if (suppressPendingSave) return
-  const next =
-    event.relatedTarget instanceof Element ? event.relatedTarget : null
+  const next = event.relatedTarget instanceof Element ? event.relatedTarget : null
   if (next?.classList.contains('report-edit-area')) {
-    awaitingClickSave.value = false
+    pendingAutoSaveAfterClick.value = false
     return
   }
-  if (editing.value && dirty.value) {
-    awaitingClickSave.value = true
+  if (next?.closest('.report-drawer__toolbar')) {
+    pendingAutoSaveAfterClick.value = false
+    return
   }
+  pendingAutoSaveAfterClick.value = editing.value && dirty.value
 }
 
-function onDrawerPointerDown(event) {
-  if (!awaitingClickSave.value || !dirty.value || saving.value || !editing.value) return
+function onDrawerClick(event) {
+  if (!pendingAutoSaveAfterClick.value || !dirty.value || saving.value || !editing.value) return
   const target = event.target
   if (!(target instanceof Element)) return
   if (target.closest('.report-edit-area')) return
   if (target.closest('.report-drawer__toolbar')) return
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
   void persistChanges({ exitEdit: false })
 }
 
 async function finishEdit() {
   suppressPendingSave = true
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
   try {
     if (dirty.value) {
       await persistChanges({ exitEdit: true })
@@ -232,7 +234,7 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
     savedContent.value = editContent.value
     savedTomorrow.value = editTomorrow.value
     if (exitEdit) editing.value = false
-    awaitingClickSave.value = false
+    pendingAutoSaveAfterClick.value = false
     flashSaved(updated)
   } catch (e) {
     const msg = e.message || '保存失败'
@@ -245,7 +247,7 @@ async function persistChanges({ exitEdit = false, manual = false } = {}) {
 
 async function save() {
   suppressPendingSave = true
-  awaitingClickSave.value = false
+  pendingAutoSaveAfterClick.value = false
   try {
     await persistChanges({ exitEdit: true, manual: true })
   } finally {
@@ -272,7 +274,7 @@ async function save() {
             role="dialog"
             aria-modal="true"
             :aria-label="title"
-            @pointerdown.capture="onDrawerPointerDown"
+            @click.capture="onDrawerClick"
           >
             <header class="report-drawer__head">
               <div>
@@ -330,7 +332,7 @@ async function save() {
                 <span>加载报告内容…</span>
               </div>
               <template v-else>
-                <p v-if="!editing" class="report-drawer__hint">双击正文区域可编辑；编辑后失焦，再点击空白处自动保存</p>
+                <p v-if="!editing" class="report-drawer__hint">双击正文可编辑；改完后点击输入框外任意处即自动保存（离开输入框的那次点击即可）</p>
                 <template v-if="editing">
                   <label class="field-label">正文</label>
                   <textarea
