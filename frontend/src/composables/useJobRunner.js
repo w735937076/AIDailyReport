@@ -11,6 +11,10 @@ export function useJobRunner() {
   const error = ref('')
   let timer = null
 
+  function isPolling() {
+    return timer != null
+  }
+
   function stopPoll() {
     if (timer) {
       clearInterval(timer)
@@ -44,6 +48,12 @@ export function useJobRunner() {
           running.value = false
           status.value = 'FAILED'
           error.value = e.message
+          job.value = {
+            status: 'FAILED',
+            percent: 100,
+            message: '轮询任务状态失败',
+            error: e.message,
+          }
           reject(e)
         }
       }
@@ -52,9 +62,47 @@ export function useJobRunner() {
     })
   }
 
+  /** Show progress before an async job id exists (e.g. preflight API checks). */
+  function beginPending(message = '准备中…', percent = 5) {
+    if (isPolling()) return
+    running.value = true
+    status.value = 'RUNNING'
+    error.value = ''
+    job.value = { status: 'PENDING', percent, message }
+  }
+
+  function updatePending(message, percent) {
+    if (isPolling() || !job.value) return
+    job.value = {
+      ...job.value,
+      status: 'PENDING',
+      message,
+      percent: percent != null ? percent : job.value.percent,
+    }
+  }
+
+  function cancelPending() {
+    if (isPolling()) return
+    reset()
+  }
+
+  function failPending(message, detail) {
+    if (isPolling()) return
+    running.value = false
+    status.value = 'FAILED'
+    const errMsg = detail || message || '任务失败'
+    error.value = errMsg
+    job.value = {
+      status: 'FAILED',
+      percent: 100,
+      message: message || '任务失败',
+      error: errMsg,
+    }
+  }
+
   /** @param {() => Promise<{ jobId: string }>} startFn */
   async function run(startFn) {
-    if (running.value) return null
+    if (isPolling()) return null
     running.value = true
     status.value = 'RUNNING'
     error.value = ''
@@ -64,8 +112,15 @@ export function useJobRunner() {
       return await pollUntilDone(jobId)
     } catch (e) {
       running.value = false
-      if (status.value !== 'FAILED') status.value = 'FAILED'
-      if (!error.value) error.value = e.message
+      status.value = 'FAILED'
+      const errMsg = error.value || e.message || '任务失败'
+      error.value = errMsg
+      job.value = {
+        status: 'FAILED',
+        percent: 100,
+        message: '任务失败',
+        error: errMsg,
+      }
       throw e
     }
   }
@@ -78,5 +133,16 @@ export function useJobRunner() {
     error.value = ''
   }
 
-  return { running, job, status, error, run, reset }
+  return {
+    running,
+    job,
+    status,
+    error,
+    run,
+    reset,
+    beginPending,
+    updatePending,
+    cancelPending,
+    failPending,
+  }
 }

@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PageHeader from '../components/PageHeader.vue'
 import AppAlert from '../components/AppAlert.vue'
+import StatusChip from '../components/StatusChip.vue'
 import Pagination from '../components/Pagination.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
 import PerformancePreviewDrawer from '../components/PerformancePreviewDrawer.vue'
@@ -14,13 +15,30 @@ const msg = ref('')
 const err = ref('')
 const configOpen = ref(false)
 const config = ref({})
+const generating = ref(false)
 const pager = usePagination(({ page, size }) => api.performance.list(page, size), 10)
-const { running, job, status, error: jobError, run } = useJobRunner()
+const {
+  running,
+  job,
+  status,
+  error: jobError,
+  run,
+  beginPending,
+  updatePending,
+  cancelPending,
+  failPending,
+} = useJobRunner()
 
 const drawerOpen = ref(false)
 const drawerLoading = ref(false)
 const active = ref(null)
 const activeContent = ref({})
+
+let dismissTimer = null
+
+const panelVisible = computed(
+  () => generating.value || running.value || status.value === 'COMPLETED' || status.value === 'FAILED',
+)
 
 watch(jobError, (v) => {
   if (v) err.value = v
@@ -32,6 +50,14 @@ watch(
     if (v) err.value = v
   },
 )
+
+function flashSuccess(text) {
+  msg.value = text
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = setTimeout(() => {
+    msg.value = ''
+  }, 6000)
+}
 
 function parseContent(json) {
   try {
@@ -95,29 +121,44 @@ async function onSaved(updated) {
   active.value = updated
   activeContent.value = parseContent(updated.contentJson)
   await pager.load()
-  msg.value = '已保存并重新导出 Excel'
+  flashSuccess('已保存并重新导出 Excel')
 }
 
 async function generate() {
+  if (generating.value || running.value) return
   err.value = ''
   msg.value = ''
+  generating.value = true
+  beginPending(`正在准备 ${yearMonth.value} 绩效评估…`, 8)
+
   let replaceExisting = false
   try {
+    updatePending('正在检查当月是否已有记录…', 12)
     const exists = await api.performance.exists(yearMonth.value)
-    if (exists && !window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
-      return
+    if (exists) {
+      updatePending('等待确认是否覆盖已有记录…', 18)
+      if (!window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
+        cancelPending()
+        generating.value = false
+        return
+      }
+      replaceExisting = true
     }
-    if (exists) replaceExisting = true
+    updatePending('正在提交生成任务…', 22)
   } catch (e) {
-    err.value = e.message || '检查当月记录失败'
+    const m = e.message || '检查当月记录失败'
+    failPending('检查当月记录失败', m)
+    err.value = m
+    generating.value = false
     return
   }
+
   try {
     const finished = await run(() =>
       api.performance.generate({ yearMonth: yearMonth.value, replaceExisting }),
     )
     const id = finished?.result?.id
-    msg.value = `绩效生成完成${id ? '，记录 #' + id : ''}`
+    flashSuccess(`绩效生成完成${id ? '（记录 #' + id + '）' : ''}`)
     await pager.load()
     if (id) {
       const row = pager.items.value.find((r) => r.id === id) || { id }
@@ -127,6 +168,8 @@ async function generate() {
     if (!jobError.value) {
       err.value = e.message || '生成绩效失败'
     }
+  } finally {
+    generating.value = false
   }
 }
 </script>
@@ -145,14 +188,25 @@ async function generate() {
     <div class="row">
       <div>
         <label class="field-label">月份</label>
-        <input v-model="yearMonth" type="month" :disabled="running" />
+        <input v-model="yearMonth" type="month" :disabled="generating || running" />
+      </div>
+      <div>
+        <label class="field-label">任务状态</label>
+        <p style="margin: 0; padding: 0.6rem 0">
+          <StatusChip :status="status" />
+        </p>
       </div>
       <div class="actions">
-        <button type="button" class="btn primary" :disabled="running" @click="generate">生成绩效表</button>
-        <button type="button" class="btn" @click="configOpen = !configOpen">配置</button>
+        <button type="button" class="btn primary" :disabled="generating || running" @click="generate">
+          <span v-if="generating || running" class="spinner spinner--accent" />
+          {{ generating || running ? '生成中…' : '生成绩效表' }}
+        </button>
+        <button type="button" class="btn" :disabled="generating || running" @click="configOpen = !configOpen">
+          配置
+        </button>
       </div>
     </div>
-    <JobProgressPanel v-if="running || job" :job="job" :status="status" />
+    <JobProgressPanel :job="job" :visible="panelVisible" />
   </section>
 
   <section v-if="configOpen" class="card">
