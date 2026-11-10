@@ -5,6 +5,8 @@ import PageHeader from '../components/PageHeader.vue'
 import AppAlert from '../components/AppAlert.vue'
 import StatusChip from '../components/StatusChip.vue'
 import Pagination from '../components/Pagination.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingBlock from '../components/LoadingBlock.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
 import PerformancePreviewDrawer from '../components/PerformancePreviewDrawer.vue'
 import { useJobRunner } from '../composables/useJobRunner'
@@ -117,6 +119,29 @@ function downloadExcel(path) {
   if (path) window.open(api.downloadUrl(path), '_blank')
 }
 
+function formatReviewMonth(ym) {
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return ym || '—'
+  const [y, m] = ym.split('-')
+  return `${y}年${Number(m)}月`
+}
+
+function formatUpdatedAt(iso) {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return '—'
+    return d.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return '—'
+  }
+}
+
 async function onSaved(updated) {
   active.value = updated
   activeContent.value = parseContent(updated.contentJson)
@@ -226,42 +251,69 @@ async function generate() {
     <button type="button" class="btn primary" @click="saveConfig">保存配置</button>
   </section>
 
-  <section class="card">
+  <section class="card page-stack">
     <h2 class="card-title">历史记录</h2>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>月份</th>
-          <th>被评估人</th>
-          <th>状态</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in pager.items.value" :key="row.id">
-          <td>{{ row.reviewMonth }}</td>
-          <td>{{ row.author }}</td>
-          <td>{{ row.status }}</td>
-          <td>
-            <button type="button" class="btn link" @click="openPreview(row)">预览</button>
-            <button
-              v-if="row.excelPath"
-              type="button"
-              class="btn link"
-              @click="downloadExcel(row.excelPath)"
+
+    <LoadingBlock v-if="pager.loading.value" />
+    <template v-else>
+      <EmptyState
+        v-if="!pager.items.value.length"
+        title="暂无绩效记录"
+        hint="在上方选择月份并点击「生成绩效表」，完成后会显示在这里。"
+        icon="★"
+      />
+
+      <div v-else class="table-wrap">
+        <table class="data-table table-fluid performance-table">
+          <thead>
+            <tr>
+              <th class="col-perf-month">月份</th>
+              <th class="col-perf-author">被评估人</th>
+              <th class="col-perf-status">状态</th>
+              <th class="col-perf-updated">更新时间</th>
+              <th class="col-perf-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in pager.items.value"
+              :key="row.id"
+              class="report-row"
+              tabindex="0"
+              @click="openPreview(row)"
+              @keydown.enter="openPreview(row)"
             >
-              下载
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <Pagination
-      :page="pager.page.value"
-      :size="pager.size.value"
-      :total="pager.total.value"
-      @update:page="(p) => pager.goToPage(p)"
-    />
+              <td class="col-perf-month">{{ formatReviewMonth(row.reviewMonth) }}</td>
+              <td class="col-perf-author cell-ellipsis" :title="row.author">{{ row.author || '—' }}</td>
+              <td class="col-perf-status">
+                <StatusChip :status="row.status" />
+              </td>
+              <td class="col-perf-updated cell-muted">{{ formatUpdatedAt(row.updatedAt) }}</td>
+              <td class="col-perf-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @click.stop="openPreview(row)">预览</button>
+                <button
+                  v-if="row.excelPath"
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  @click.stop="downloadExcel(row.excelPath)"
+                >
+                  下载 Excel
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        v-if="pager.items.value.length"
+        :page="pager.page.value"
+        :size="pager.size.value"
+        :total="pager.total.value"
+        @update:page="(p) => pager.goToPage(p)"
+        @update:size="(s) => pager.changeSize(s)"
+      />
+    </template>
   </section>
 
   <PerformancePreviewDrawer
@@ -297,5 +349,32 @@ async function generate() {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+}
+</style>
+
+<style>
+.data-table.performance-table .col-perf-month {
+  width: 9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.data-table.performance-table .col-perf-author {
+  width: 22%;
+  max-width: 12rem;
+}
+.data-table.performance-table .col-perf-status {
+  width: 7rem;
+}
+.data-table.performance-table .col-perf-updated {
+  width: 11rem;
+  font-size: 0.8125rem;
+}
+.data-table.performance-table .col-perf-actions {
+  width: 11rem;
+  text-align: right;
+  white-space: nowrap;
+}
+.data-table.performance-table .col-perf-actions .btn + .btn {
+  margin-left: 0.25rem;
 }
 </style>

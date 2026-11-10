@@ -6,7 +6,8 @@ const labels = {
   GENERATED: '已生成',
   DRAFT: '草稿',
   RUNNING: '进行中',
-  COMPLETED: '完成',
+  COMPLETED: '已完成',
+  PENDING: '待处理',
   FAILED: '失败',
   IDLE: '空闲',
 }
