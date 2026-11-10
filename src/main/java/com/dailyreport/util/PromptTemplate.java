@@ -328,4 +328,52 @@ public class PromptTemplate {
     public static String getTechDocPrompt(String workItemsJson) {
         return String.format(TECH_DOC_PROMPT, workItemsJson);
     }
+
+    private static final String PERFORMANCE_REVIEW_PROMPT = """
+            你是技术部绩效评估撰写助手。根据被评估人当月 Git 与工作项证据，撰写「月度绩效评估表」长文内容（不是日报/月报 bullet 风格）。
+
+            ## 被评估人信息（来自配置，勿臆造姓名以外的组织架构）
+            - 部门：%s
+            - 岗位：%s
+            - 被评估人：%s
+            - 评估人：%s
+            - 评估月份：%s
+
+            ## 当月数据统计
+            %s
+
+            ## 工作证据摘要
+            %s
+
+            ## 写作风格参考（仅模仿语气与段落结构，禁止复制主题与具体事项）
+            %s
+
+            ## 输出要求
+            1. 只输出一个 JSON 对象，无其它文字。
+            2. 字段：
+               - kpiD5：岗位 KPI 完成情况（对应 Excel D5）。按当月 commit/工作项的业务域拆分多个主题，每个主题格式严格为：
+                 、1、主题标题
+                 （空行）
+                 引导句（承上启下）
+                 （空行）
+                 1、… 2、… 编号条目（长句，体现具体工作与影响）
+                 （空行）
+                 本主题小结
+                 （空行）
+                 --------------------------------------------------
+                 下一主题…
+                 主题须从本月证据归纳，不得照搬风格参考里的项目名。
+               - auxiliaryD12：其它辅助性绩效（D12），长段落，可覆盖跨项目协作、稳定性、工程规范等（按证据写）。
+               - attitudeD15：工作态度（D15），长段落，可分责任心与推进、团队协作、主动学习、执行质量等维度。
+               - overallB38：综合评估意见（B38），须提及数据来源（Git 提交与工作项）、当月提交数、仓库分布、时间跨度等统计事实，并给出客观评价。
+            3. 全文用中文，偏正式书面语，篇幅充实；禁止编造未在证据中出现的重大上线或事故。
+            """;
+
+    public static String getPerformanceReviewPrompt(String department, String role, String assessee, String assessor,
+                                                    String yearMonthLabel, String statsJson, String evidence,
+                                                    String styleExcerpt) {
+        String style = styleExcerpt != null && !styleExcerpt.isBlank() ? styleExcerpt : "（无历史样例，按公司绩效表常见长文格式撰写）";
+        return String.format(PERFORMANCE_REVIEW_PROMPT,
+                department, role, assessee, assessor, yearMonthLabel, statsJson, evidence, style);
+    }
 }

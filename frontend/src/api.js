@@ -79,6 +79,17 @@ export const api = {
     status: () => request('/api/reports/status'),
   },
   downloadUrl: (path) => `/api/export/download?path=${encodeURIComponent(path)}`,
+  performance: {
+    list: (page = 1, size = 10) => request(`/api/performance?${pageQuery(page, size)}`),
+    get: (id) => request(`/api/performance/${id}`),
+    exists: (yearMonth) => request(`/api/performance/exists?yearMonth=${encodeURIComponent(yearMonth)}`),
+    update: (id, body) =>
+      request(`/api/performance/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    generate: (body) => request('/api/performance/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
+    getConfig: () => request('/api/performance/config'),
+    saveConfig: (body) => request('/api/performance/config', { method: 'PUT', body: JSON.stringify(body) }),
+    listLocalFiles: () => request('/api/performance/local-files'),
+  },
 }
 
 export const UNCHANGED_SECRET = '__UNCHANGED__'

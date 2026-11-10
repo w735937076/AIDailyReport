@@ -5,6 +5,8 @@
 /dist/
 /logs/
 /output/
+/templates/performance/*.xlsx
+!/templates/performance/.gitkeep
 /data/
 /.idea/
 hs_err_pid*.log

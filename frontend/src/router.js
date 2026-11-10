@@ -5,6 +5,7 @@ import AiSettings from './views/AiSettings.vue'
 import Scheduler from './views/Scheduler.vue'
 import Generate from './views/Generate.vue'
 import WorkItems from './views/WorkItems.vue'
+import Performance from './views/Performance.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -15,5 +16,6 @@ export default createRouter({
     { path: '/ai', name: 'ai', component: AiSettings },
     { path: '/scheduler', name: 'scheduler', component: Scheduler },
     { path: '/generate', name: 'generate', component: Generate },
+    { path: '/performance', name: 'performance', component: Performance },
   ],
 })

@@ -42,3 +42,18 @@ report:
 scheduler:
   enabled: false
   cron: "0 0 18 * * ?"
+
+# 绩效评估（独立于月报 period_report）
+performance:
+  department: "技术部"
+  role: "java"
+  assessee: ""
+  assessor: ""
+  templatePath: "./templates/performance/performance_template.xlsx"
+  # 指向本机历史 MonthPerformance 目录，仅用最新 xlsx 复制样式，勿将含真实姓名的文件提交到 git
+  # 示例: "E:/IdeaSelfSpace/MonthPerformance"
+  templateSearchDir: ""
+  scoreKpi: 55
+  scoreAuxiliary: 18
+  scoreAttitude: 20
+  scoreOther: 0

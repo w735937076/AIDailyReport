@@ -12,6 +12,7 @@
         <router-link to="/ai"><span class="nav-icon">◇</span>AI 设置</router-link>
         <router-link to="/scheduler"><span class="nav-icon">◷</span>定时采集</router-link>
         <router-link to="/generate"><span class="nav-icon">↗</span>生成报告</router-link>
+        <router-link to="/performance"><span class="nav-icon">★</span>绩效评估</router-link>
       </nav>
       <p class="sidebar-foot">Git → 工作项 → AI 报告</p>
     </aside>

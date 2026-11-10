@@ -36,6 +36,7 @@ Git 提交 → 解析 diff / message → work_item（计划 / 做法 / 进度…
 - **多 AI 提供商**：`app_ai_provider` 按 priority  failover，冷却与重试可配
 - **Web UI**：Vue 3 + Vite 嵌入 Spring Boot `static/`，报告抽屉支持分段复制、双击编辑、失焦后点击自动保存
 - **异步任务**：采集 / 生成报告返回 `jobId`，前端轮询进度
+- **绩效评估（独立模块）**：按月汇总 Git / `work_item`，AI 长文 + 官方 Excel 模板填充；与「生成月报」/`period_report` 分离
 - **Windows**：`scripts/package-windows.ps1` / `jpackage` 生成便携目录或 `.exe`（需在 Windows 上完成 exe 步骤）
 
 ## 技术栈
@@ -157,7 +158,14 @@ Git 项目（DB） → GitCollectService → AiParseService → work_item
 Vue SPA  ←REST /api/*→  Spring Boot  ←MyBatis→  MySQL
 ```
 
-- **Web 配置表**（见 `schema_web.sql`）：`app_git_project`、`app_ai_provider`、`app_scheduler_config`、`app_setting`
+- **Web 配置表**（见 `schema_web.sql`）：`app_git_project`、`app_ai_provider`、`app_scheduler_config`、`app_setting`、`performance_review`
+
+### 绩效评估与 MonthPerformance 迁移
+
+1. 在侧栏打开 **绩效评估**，配置部门 / 岗位 / 被评估人 / 分数与模板路径。
+2. `config.yaml` 的 `performance.templateSearchDir` 可指向本机历史目录（例如 `E:/IdeaSelfSpace/MonthPerformance`），系统会选用该目录下最新的 `.xlsx` 作为 **样式模板**（不复制含真实姓名的文件到 git）。
+3. 将公司空白表放到 `./templates/performance/performance_template.xlsx`（该路径下的 xlsx 已在 `.gitignore`）；若缺失，首次导出会生成最小占位模板。
+4. 生成结果写入 `./output/performance/`，可通过 Web 预览编辑 D5 / D12 / D15 / B38 后重新导出；默认分数 55 + 18 + 20 + 0 = 93，可在配置中修改。
 - **CLI**：设置 `app.cli.enabled=true` 可启用遗留菜单
 
 ## 许可证
