@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -27,7 +28,40 @@ public class SchemaInitializer implements ApplicationRunner {
     public void run(org.springframework.boot.ApplicationArguments args) {
         runScript("schema.sql");
         runScript("schema_web.sql");
+        ensurePerformanceReviewTable();
         migratePerformanceReviewMonthColumn();
+    }
+
+    private void ensurePerformanceReviewTable() {
+        try {
+            Integer tables = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'performance_review'",
+                    Integer.class);
+            if (tables != null && tables > 0) {
+                return;
+            }
+            log.info("performance_review missing; applying bootstrap DDL");
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS performance_review (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        review_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM',
+                        author VARCHAR(100) NOT NULL,
+                        status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+                        content_json LONGTEXT,
+                        commit_stats_json TEXT,
+                        excel_path VARCHAR(500),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_perf_month_author (review_month, author)
+                    )""");
+            try {
+                jdbcTemplate.execute("CREATE INDEX idx_perf_review_month ON performance_review(review_month)");
+            } catch (Exception ignored) {
+            }
+        } catch (Exception e) {
+            log.warn("Could not ensure performance_review table: {}", e.getMessage());
+        }
     }
 
     /** MySQL treats YEAR_MONTH as reserved; rename legacy year_month column if present. */
@@ -76,10 +110,29 @@ public class SchemaInitializer implements ApplicationRunner {
         }
     }
 
-    private static Iterable<String> splitStatements(String sql) {
+    /**
+     * Splits a script on {@code ;} and removes full-line {@code --} comments from each chunk.
+     * A chunk must not be dropped just because a leading comment line precedes real DDL.
+     */
+    static List<String> splitStatements(String sql) {
         return Arrays.stream(sql.split(";"))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty() && !s.startsWith("--"))
+                .map(SchemaInitializer::stripLineCommentsAndTrim)
+                .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
+    }
+
+    private static String stripLineCommentsAndTrim(String chunk) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : chunk.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("--")) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append('\n');
+            }
+            sb.append(line);
+        }
+        return sb.toString().trim();
     }
 }

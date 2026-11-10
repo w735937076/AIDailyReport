@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS app_setting (
 );
 
 -- 绩效评估（独立于 period_report / 月报）
+;
 CREATE TABLE IF NOT EXISTS performance_review (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     review_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM',
