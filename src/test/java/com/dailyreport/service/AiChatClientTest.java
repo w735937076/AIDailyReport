@@ -75,13 +75,18 @@ class AiChatClientTest {
         return ResponseEntity.ok("{\"choices\":[{\"message\":{\"content\":\"" + content + "\"}}]}");
     }
 
-    private org.mockito.stubbing.OngoingStubbing<ResponseEntity<String>> request(RestTemplate rest) {
-        return when(rest.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)));
+    private org.mockito.stubbing.OngoingStubbing<ResponseEntity<byte[]>> request(RestTemplate rest) {
+        return when(rest.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(byte[].class)));
+    }
+
+    private ResponseEntity<byte[]> responseBytes(String content) {
+        String json = "{\"choices\":[{\"message\":{\"content\":\"" + content + "\"}}]}";
+        return ResponseEntity.ok(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Test
     void primarySuccessDoesNotCallBackup() throws Exception {
-        request(primary).thenReturn(response("primary"));
+        request(primary).thenReturn(responseBytes("primary"));
         assertEquals("primary", client.complete("prompt"));
         verifyNoInteractions(fallback);
     }
@@ -89,32 +94,32 @@ class AiChatClientTest {
     @Test
     void timeoutImmediatelyUsesBackup() throws Exception {
         request(primary).thenThrow(new ResourceAccessException("timeout", new SocketTimeoutException()));
-        request(fallback).thenReturn(response("backup"));
+        request(fallback).thenReturn(responseBytes("backup"));
         assertEquals("backup", client.complete("prompt"));
-        verify(primary, times(1)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(String.class));
+        verify(primary, times(1)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(byte[].class));
     }
 
     @ParameterizedTest
     @ValueSource(ints = {401, 402, 403, 408, 429, 500, 503})
     void providerFailuresUseBackup(int status) throws Exception {
         request(primary).thenThrow(new HttpClientErrorException(HttpStatusCode.valueOf(status)));
-        request(fallback).thenReturn(response("backup"));
+        request(fallback).thenReturn(responseBytes("backup"));
         assertEquals("backup", client.complete("prompt"));
     }
 
     @Test
     void badRequestDoesNotRetryOrSwitch() {
         request(primary).thenThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST));
-        assertThrows(HttpClientErrorException.class, () -> client.complete("prompt"));
+        assertThrows(AiCallException.class, () -> client.complete("prompt"));
         verifyNoInteractions(fallback);
-        verify(primary, times(1)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(String.class));
+        verify(primary, times(1)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(byte[].class));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"{}", "not-json", "{\"choices\":[{\"message\":{\"content\":null}}]}"})
     void invalidResponseUsesBackup(String body) throws Exception {
-        request(primary).thenReturn(ResponseEntity.ok(body));
-        request(fallback).thenReturn(response("backup"));
+        request(primary).thenReturn(ResponseEntity.ok(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        request(fallback).thenReturn(responseBytes("backup"));
         assertEquals("backup", client.complete("prompt"));
     }
 
@@ -122,14 +127,14 @@ class AiChatClientTest {
     void cooldownSkipsPrimaryAndRecoveryResetsFailureCount() throws Exception {
         request(primary).thenThrow(new ResourceAccessException("timeout"))
                 .thenThrow(new ResourceAccessException("timeout"))
-                .thenReturn(response("recovered"))
+                .thenReturn(responseBytes("recovered"))
                 .thenThrow(new ResourceAccessException("timeout"))
-                .thenReturn(response("primary"));
-        request(fallback).thenReturn(response("backup"));
+                .thenReturn(responseBytes("primary"));
+        request(fallback).thenReturn(responseBytes("backup"));
         assertEquals("backup", client.complete("first"));
         assertEquals("backup", client.complete("second"));
         assertEquals("backup", client.complete("during cooldown"));
-        verify(primary, times(2)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(String.class));
+        verify(primary, times(2)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(byte[].class));
         when(clock.millis()).thenReturn(121_000L);
         assertEquals("recovered", client.complete("after cooldown"));
         assertEquals("backup", client.complete("one failure"));
@@ -140,7 +145,7 @@ class AiChatClientTest {
     void singleProviderUsesConfiguredAttempts() throws Exception {
         when(providerService.listEnabledForRuntime()).thenReturn(List.of(primaryProvider));
         policy.setMaxRetries(2);
-        request(primary).thenThrow(new ResourceAccessException("timeout")).thenReturn(response("primary"));
+        request(primary).thenThrow(new ResourceAccessException("timeout")).thenReturn(responseBytes("primary"));
         assertEquals("primary", client.complete("prompt"));
         verifyNoInteractions(fallback);
     }
@@ -150,7 +155,7 @@ class AiChatClientTest {
         when(providerService.listEnabledForRuntime()).thenReturn(List.of(primaryProvider));
         policy.setMaxRetries(1);
         request(primary).thenThrow(new ResourceAccessException("timeout"));
-        assertThrows(ResourceAccessException.class, () -> client.complete("prompt"));
+        assertThrows(AiCallException.class, () -> client.complete("prompt"));
         verifyNoInteractions(fallback);
     }
 
@@ -158,8 +163,9 @@ class AiChatClientTest {
     void backupRetriesAndPreservesBothFailures() {
         request(primary).thenThrow(new ResourceAccessException("primary timeout"));
         request(fallback).thenThrow(new ResourceAccessException("backup timeout"));
-        assertThrows(ResourceAccessException.class, () -> client.complete("prompt"));
-        verify(fallback, times(3)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(String.class));
+        AiCallException ex = assertThrows(AiCallException.class, () -> client.complete("prompt"));
+        assertTrue(ex.getUserMessage().contains("备用"));
+        verify(fallback, times(3)).exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(byte[].class));
     }
 
     @Test
@@ -184,7 +190,7 @@ class AiChatClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer backup-test-key"))
                 .andExpect(content().json("{\"model\":\"MiniMax-M3.1-Flash\",\"messages\":[{\"role\":\"user\",\"content\":\"prompt\"}]}"))
-                .andRespond(withSuccess(response("backup").getBody(), MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(responseBytes("backup").getBody(), MediaType.APPLICATION_JSON));
         Map<Long, RestTemplate> clients = Map.of(1L, primary, 2L, rest);
         client = new AiChatClient(providerService, clock, clients);
         assertEquals("backup", client.complete("prompt"));

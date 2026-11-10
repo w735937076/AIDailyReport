@@ -8,4 +8,6 @@ public class AiPolicy {
     private int retryDelayMs = 1000;
     private int failureThreshold = 2;
     private long cooldownMs = 120_000L;
+    /** Read timeout for long outputs (e.g. performance review), default 5 minutes. */
+    private int longReadTimeoutMs = 300_000;
 }

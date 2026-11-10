@@ -150,6 +150,7 @@ public class AiProviderService {
         policy.setRetryDelayMs(parseInt(appSettingMapper.get("ai_retry_delay_ms"), 1000));
         policy.setFailureThreshold(parseInt(appSettingMapper.get("ai_failure_threshold"), 2));
         policy.setCooldownMs(parseLong(appSettingMapper.get("ai_cooldown_ms"), 120_000L));
+        policy.setLongReadTimeoutMs(parseInt(appSettingMapper.get("ai_long_read_timeout_ms"), 300_000));
         return policy;
     }
 
@@ -160,6 +161,7 @@ public class AiProviderService {
         dto.setRetryDelayMs(p.getRetryDelayMs());
         dto.setFailureThreshold(p.getFailureThreshold());
         dto.setCooldownMs(p.getCooldownMs());
+        dto.setLongReadTimeoutMs(p.getLongReadTimeoutMs());
         return dto;
     }
 
@@ -176,6 +178,9 @@ public class AiProviderService {
         }
         if (dto.getCooldownMs() != null) {
             appSettingMapper.put("ai_cooldown_ms", String.valueOf(dto.getCooldownMs()));
+        }
+        if (dto.getLongReadTimeoutMs() != null) {
+            appSettingMapper.put("ai_long_read_timeout_ms", String.valueOf(dto.getLongReadTimeoutMs()));
         }
         return getPolicyDto();
     }

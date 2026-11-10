@@ -24,6 +24,7 @@ ai:
   readTimeoutMs: 60000
   failureThreshold: 2
   cooldownMs: 120000
+  # 绩效评估等长文：Web「AI 设置」策略 longReadTimeoutMs 默认 300000（5 分钟）
   fallback:
     enabled: true
     apiKey: "${DEEPSEEK_API_KEY:}"

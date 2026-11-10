@@ -14,6 +14,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -28,7 +29,8 @@ public class AiChatClient {
     private final AiProviderService providerService;
     private final Clock clock;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final ConcurrentHashMap<Long, RestTemplate> clients = new ConcurrentHashMap<>();
+    /** Key: providerId:connectMs:readMs or test hook t:providerId */
+    private final ConcurrentHashMap<String, RestTemplate> clients = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> failureCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Long> cooldownUntil = new ConcurrentHashMap<>();
 
@@ -43,17 +45,28 @@ public class AiChatClient {
         this.providerService = providerService;
         this.clock = clock;
         if (testClients != null) {
-            this.clients.putAll(testClients);
+            testClients.forEach((id, rt) -> this.clients.put("t:" + id, rt));
         }
     }
 
     public String complete(String prompt) throws Exception {
+        return complete(prompt, null);
+    }
+
+    /**
+     * @param readTimeoutOverrideMs if set, overrides each provider's read timeout for this call
+     *                              (e.g. long-form performance review).
+     */
+    public String complete(String prompt, Integer readTimeoutOverrideMs) throws Exception {
+        log.info("AI prompt 字符数={}", prompt != null ? prompt.length() : 0);
         List<AiProvider> providers = providerService.listEnabledForRuntime();
         if (providers.isEmpty()) {
-            throw new IllegalStateException("没有已启用且配置 API Key 的 AI 提供商，请在 Web「AI 设置」中添加");
+            throw new AiCallException("没有已启用且配置 API Key 的 AI 提供商，请在 Web「AI 设置」中添加");
         }
         AiPolicy policy = providerService.getPolicy();
         Exception lastError = null;
+        int attempted = 0;
+        boolean sawTimeout = false;
 
         for (int i = 0; i < providers.size(); i++) {
             AiProvider provider = providers.get(i);
@@ -63,30 +76,50 @@ public class AiChatClient {
                 continue;
             }
             int attempts = hasMore ? 1 : Math.max(1, policy.getMaxRetries());
+            attempted++;
             try {
-                String result = requestWithRetries(provider, prompt, attempts, policy);
+                String result = requestWithRetries(provider, prompt, attempts, policy, readTimeoutOverrideMs);
                 providerSucceeded(provider.getId());
                 return result;
             } catch (Exception e) {
                 if (e instanceof InterruptedException) {
                     throw e;
                 }
+                if (isTimeoutException(e)) {
+                    sawTimeout = true;
+                }
                 if (!canFailover(e)) {
-                    throw e;
+                    throw wrapFailure(attempted, sawTimeout, e);
                 }
                 providerFailed(provider.getId(), policy);
                 lastError = e;
                 if (!hasMore) {
-                    throw e;
+                    throw new AiCallException(
+                            AiUserMessages.allProvidersFailed(attempted, sawTimeout, e), e);
                 }
                 log.warn("提供商「{}」失败（{}），尝试下一个", provider.getName(), e.getClass().getSimpleName());
             }
         }
-        IllegalStateException failure = new IllegalStateException("所有已启用的 AI 提供商均调用失败", lastError);
-        if (lastError != null) {
-            failure.initCause(lastError);
+        throw new AiCallException(
+                AiUserMessages.allProvidersFailed(Math.max(1, attempted), sawTimeout, lastError), lastError);
+    }
+
+    private static Exception wrapFailure(int attempted, boolean sawTimeout, Exception e) {
+        if (e instanceof AiCallException) {
+            return e;
         }
-        throw failure;
+        return new AiCallException(AiUserMessages.allProvidersFailed(attempted, sawTimeout, e), e);
+    }
+
+    private static boolean isTimeoutException(Throwable e) {
+        Throwable c = e;
+        while (c != null) {
+            if (c instanceof ResourceAccessException) {
+                return true;
+            }
+            c = c.getCause();
+        }
+        return false;
     }
 
     private boolean shouldSkipForCooldown(AiProvider provider, List<AiProvider> all, int index) {
@@ -131,19 +164,20 @@ public class AiChatClient {
         }
     }
 
-    private String requestWithRetries(AiProvider provider, String prompt, int attempts, AiPolicy policy)
-            throws Exception {
+    private String requestWithRetries(AiProvider provider, String prompt, int attempts, AiPolicy policy,
+                                      Integer readTimeoutOverrideMs) throws Exception {
         AppConfig.AiProviderConfig cfg = provider.toProviderConfig();
         for (int attempt = 1; ; attempt++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("AI 调用已取消");
             }
+            int connectMs = effectiveConnectMs(provider, cfg);
+            int readMs = effectiveReadMs(provider, cfg, readTimeoutOverrideMs);
             long startedAt = System.nanoTime();
             log.info("AI 请求开始：{}，model={}，尝试={}/{}，连接超时={}ms，读取超时={}ms",
-                    provider.getName(), provider.getModel(), attempt, attempts,
-                    cfg.getConnectTimeoutMs(), cfg.getReadTimeoutMs());
+                    provider.getName(), provider.getModel(), attempt, attempts, connectMs, readMs);
             try {
-                String result = request(cfg, prompt, provider.getId());
+                String result = request(cfg, prompt, provider.getId(), connectMs, readMs);
                 log.info("AI 请求成功：{}，model={}，耗时={}ms，返回字符数={}",
                         provider.getName(), provider.getModel(),
                         (System.nanoTime() - startedAt) / 1_000_000, result.length());
@@ -165,6 +199,23 @@ public class AiChatClient {
         }
     }
 
+    private static int effectiveConnectMs(AiProvider provider, AppConfig.AiProviderConfig cfg) {
+        if (provider.getConnectTimeoutMs() != null && provider.getConnectTimeoutMs() > 0) {
+            return provider.getConnectTimeoutMs();
+        }
+        return Math.max(1, cfg.getConnectTimeoutMs());
+    }
+
+    private static int effectiveReadMs(AiProvider provider, AppConfig.AiProviderConfig cfg, Integer override) {
+        if (override != null && override > 0) {
+            return override;
+        }
+        if (provider.getReadTimeoutMs() != null && provider.getReadTimeoutMs() > 0) {
+            return provider.getReadTimeoutMs();
+        }
+        return Math.max(1, cfg.getReadTimeoutMs());
+    }
+
     private boolean isTransient(Exception e) {
         if (e instanceof ResourceAccessException || e instanceof InvalidResponseException) {
             return true;
@@ -172,6 +223,10 @@ public class AiChatClient {
         if (e instanceof RestClientResponseException http) {
             int status = http.getStatusCode().value();
             return status == 408 || status == 429 || status >= 500;
+        }
+        String msg = e.getMessage();
+        if (msg != null && msg.toLowerCase().contains("extracting response")) {
+            return true;
         }
         return false;
     }
@@ -187,7 +242,8 @@ public class AiChatClient {
         return false;
     }
 
-    private String request(AppConfig.AiProviderConfig provider, String prompt, Long providerId) throws Exception {
+    private String request(AppConfig.AiProviderConfig provider, String prompt, Long providerId,
+                           int connectMs, int readMs) throws Exception {
         if (!hasKey(provider)) {
             throw new IllegalArgumentException("请配置提供商的 API Key");
         }
@@ -197,14 +253,16 @@ public class AiChatClient {
         Map<String, Object> body = Map.of("model", provider.getModel(), "messages",
                 List.of(Map.of("role", "user", "content", prompt)));
         String url = provider.getBaseUrl().replaceAll("/+$", "") + "/chat/completions";
-        RestTemplate client = clients.computeIfAbsent(providerId, id -> new RestTemplateBuilder()
-                .setConnectTimeout(Duration.ofMillis(Math.max(1, provider.getConnectTimeoutMs())))
-                .setReadTimeout(Duration.ofMillis(Math.max(1, provider.getReadTimeoutMs())))
-                .build());
-        ResponseEntity<String> response = client.exchange(
-                url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+        RestTemplate client = resolveClient(providerId, connectMs, readMs);
+        ResponseEntity<byte[]> response = client.exchange(
+                url, HttpMethod.POST, new HttpEntity<>(body, headers), byte[].class);
+        byte[] raw = response.getBody();
+        if (raw == null || raw.length == 0) {
+            throw new InvalidResponseException();
+        }
+        String responseText = new String(raw, StandardCharsets.UTF_8);
         try {
-            JsonNode content = mapper.readTree(response.getBody()).path("choices")
+            JsonNode content = mapper.readTree(responseText).path("choices")
                     .path(0).path("message").path("content");
             if (content.isTextual() && !content.asText().isBlank()) {
                 return content.asText();
@@ -215,9 +273,16 @@ public class AiChatClient {
         throw new InvalidResponseException();
     }
 
-    private static class InvalidResponseException extends RuntimeException {
-        InvalidResponseException() {
-            super("AI 接口返回为空或缺少有效的 choices[0].message.content");
+    private RestTemplate resolveClient(Long providerId, int connectMs, int readMs) {
+        String testKey = "t:" + providerId;
+        RestTemplate injected = clients.get(testKey);
+        if (injected != null) {
+            return injected;
         }
+        String key = providerId + ":" + connectMs + ":" + readMs;
+        return clients.computeIfAbsent(key, k -> new RestTemplateBuilder()
+                .setConnectTimeout(Duration.ofMillis(connectMs))
+                .setReadTimeout(Duration.ofMillis(readMs))
+                .build());
     }
 }

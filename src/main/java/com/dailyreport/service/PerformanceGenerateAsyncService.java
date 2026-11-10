@@ -43,7 +43,7 @@ public class PerformanceGenerateAsyncService {
                 result.put("excelPath", review.getExcelPath());
                 jobService.complete(jobId, "绩效评估生成完成", result);
             } catch (Exception e) {
-                jobService.fail(jobId, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                jobService.fail(jobId, AiUserMessages.from(e));
             }
         });
         return jobId;

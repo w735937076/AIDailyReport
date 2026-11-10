@@ -23,6 +23,7 @@ public class PerformanceGenerateService {
     private final PerformanceExcelService performanceExcelService;
     private final PerformanceReviewMapper performanceReviewMapper;
     private final PerformanceConfigService performanceConfigService;
+    private final AiProviderService aiProviderService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyy-MM");
@@ -31,12 +32,14 @@ public class PerformanceGenerateService {
                                       PerformanceDataService performanceDataService,
                                       PerformanceExcelService performanceExcelService,
                                       PerformanceReviewMapper performanceReviewMapper,
-                                      PerformanceConfigService performanceConfigService) {
+                                      PerformanceConfigService performanceConfigService,
+                                      AiProviderService aiProviderService) {
         this.aiChatClient = aiChatClient;
         this.performanceDataService = performanceDataService;
         this.performanceExcelService = performanceExcelService;
         this.performanceReviewMapper = performanceReviewMapper;
         this.performanceConfigService = performanceConfigService;
+        this.aiProviderService = aiProviderService;
     }
 
     public PerformanceReview generate(String yearMonthStr, boolean replaceExisting) throws Exception {
@@ -67,7 +70,8 @@ public class PerformanceGenerateService {
                 evidence,
                 style);
 
-        String aiResponse = aiChatClient.complete(prompt);
+        int longReadMs = aiProviderService.getPolicy().getLongReadTimeoutMs();
+        String aiResponse = aiChatClient.complete(prompt, longReadMs);
         PerformanceContentDto content = parseAiContent(aiResponse);
         applyMeta(content, ym, config);
         applyDefaultScores(content, config);
