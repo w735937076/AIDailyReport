@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 public class PerformanceReview {
     private Long id;
-    private String yearMonth;
+    private String reviewMonth;
     private String author;
     private String status;
     private String contentJson;

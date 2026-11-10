@@ -5,6 +5,7 @@ import com.dailyreport.mapper.AppSettingMapper;
 import com.dailyreport.mapper.SchedulerSettingsMapper;
 import com.dailyreport.web.dto.PerformanceConfigDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -15,7 +16,7 @@ public class PerformanceConfigService {
     private final AppSettingMapper appSettingMapper;
     private final SchedulerSettingsMapper schedulerSettingsMapper;
     private final AppConfig appConfig;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
 
     public PerformanceConfigService(AppSettingMapper appSettingMapper,
                                     SchedulerSettingsMapper schedulerSettingsMapper,

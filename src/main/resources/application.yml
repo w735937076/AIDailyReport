@@ -1,6 +1,11 @@
 spring:
   application:
     name: dailyreport
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver

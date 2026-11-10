@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS app_setting (
 -- 绩效评估（独立于 period_report / 月报）
 CREATE TABLE IF NOT EXISTS performance_review (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    year_month CHAR(7) NOT NULL COMMENT 'yyyy-MM',
+    review_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM',
     author VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
     content_json LONGTEXT,
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS performance_review (
     excel_path VARCHAR(500),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_perf_month_author (year_month, author)
+    UNIQUE KEY uk_perf_month_author (review_month, author)
 );
 
-CREATE INDEX idx_perf_year_month ON performance_review(year_month);
+CREATE INDEX idx_perf_review_month ON performance_review(review_month);

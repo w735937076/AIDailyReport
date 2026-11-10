@@ -27,6 +27,33 @@ public class SchemaInitializer implements ApplicationRunner {
     public void run(org.springframework.boot.ApplicationArguments args) {
         runScript("schema.sql");
         runScript("schema_web.sql");
+        migratePerformanceReviewMonthColumn();
+    }
+
+    /** MySQL treats YEAR_MONTH as reserved; rename legacy year_month column if present. */
+    private void migratePerformanceReviewMonthColumn() {
+        try {
+            Integer legacyCols = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'performance_review' AND COLUMN_NAME = 'year_month'",
+                    Integer.class);
+            if (legacyCols == null || legacyCols == 0) {
+                return;
+            }
+            jdbcTemplate.execute(
+                    "ALTER TABLE performance_review CHANGE COLUMN year_month review_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM'");
+            try {
+                jdbcTemplate.execute("DROP INDEX idx_perf_year_month ON performance_review");
+            } catch (Exception ignored) {
+            }
+            try {
+                jdbcTemplate.execute("CREATE INDEX idx_perf_review_month ON performance_review(review_month)");
+            } catch (Exception ignored) {
+            }
+            log.info("Migrated performance_review.year_month to review_month");
+        } catch (Exception e) {
+            log.warn("performance_review column migration failed: {}", e.getMessage());
+        }
     }
 
     private void runScript(String resourceName) {

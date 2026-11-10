@@ -26,6 +26,13 @@ watch(jobError, (v) => {
   if (v) err.value = v
 })
 
+watch(
+  () => pager.error.value,
+  (v) => {
+    if (v) err.value = v
+  },
+)
+
 function parseContent(json) {
   try {
     return JSON.parse(json || '{}')
@@ -39,14 +46,25 @@ async function loadConfig() {
 }
 
 onMounted(async () => {
-  await Promise.all([pager.load(), loadConfig()])
+  err.value = ''
+  try {
+    await loadConfig()
+  } catch (e) {
+    err.value = e.message || '加载绩效配置失败'
+  }
+  await pager.load()
 })
 
 async function saveConfig() {
   err.value = ''
-  config.value = await api.performance.saveConfig(config.value)
-  configOpen.value = false
-  msg.value = '绩效配置已保存'
+  msg.value = ''
+  try {
+    config.value = await api.performance.saveConfig(config.value)
+    configOpen.value = false
+    msg.value = '绩效配置已保存'
+  } catch (e) {
+    err.value = e.message || '保存配置失败'
+  }
 }
 
 async function openPreview(row) {
@@ -57,6 +75,9 @@ async function openPreview(row) {
     const full = await api.performance.get(row.id)
     active.value = full
     activeContent.value = parseContent(full.contentJson)
+  } catch (e) {
+    err.value = e.message || '加载绩效详情失败'
+    drawerOpen.value = false
   } finally {
     drawerLoading.value = false
   }
@@ -80,12 +101,17 @@ async function onSaved(updated) {
 async function generate() {
   err.value = ''
   msg.value = ''
-  const exists = await api.performance.exists(yearMonth.value)
   let replaceExisting = false
-  if (exists && !window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
+  try {
+    const exists = await api.performance.exists(yearMonth.value)
+    if (exists && !window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
+      return
+    }
+    if (exists) replaceExisting = true
+  } catch (e) {
+    err.value = e.message || '检查当月记录失败'
     return
   }
-  if (exists) replaceExisting = true
   try {
     const finished = await run(() =>
       api.performance.generate({ yearMonth: yearMonth.value, replaceExisting }),
@@ -97,8 +123,10 @@ async function generate() {
       const row = pager.items.value.find((r) => r.id === id) || { id }
       await openPreview(row)
     }
-  } catch {
-    /* job panel */
+  } catch (e) {
+    if (!jobError.value) {
+      err.value = e.message || '生成绩效失败'
+    }
   }
 }
 </script>
@@ -157,7 +185,7 @@ async function generate() {
       </thead>
       <tbody>
         <tr v-for="row in pager.items.value" :key="row.id">
-          <td>{{ row.yearMonth }}</td>
+          <td>{{ row.reviewMonth }}</td>
           <td>{{ row.author }}</td>
           <td>{{ row.status }}</td>
           <td>
@@ -185,7 +213,7 @@ async function generate() {
   <PerformancePreviewDrawer
     :open="drawerOpen"
     :loading="drawerLoading"
-    :title="active ? `${active.yearMonth} 绩效` : ''"
+    :title="active ? `${active.reviewMonth} 绩效` : ''"
     :review-id="active?.id"
     :content="activeContent"
     :excel-path="active?.excelPath"

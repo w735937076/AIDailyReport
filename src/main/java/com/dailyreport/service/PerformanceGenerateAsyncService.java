@@ -39,7 +39,7 @@ public class PerformanceGenerateAsyncService {
                 jobService.stage(jobId, "EXPORT", 88, "正在写入 Excel…");
                 Map<String, Object> result = new HashMap<>();
                 result.put("id", review.getId());
-                result.put("yearMonth", review.getYearMonth());
+                result.put("reviewMonth", review.getReviewMonth());
                 result.put("excelPath", review.getExcelPath());
                 jobService.complete(jobId, "绩效评估生成完成", result);
             } catch (Exception e) {

@@ -76,7 +76,7 @@ public class PerformanceGenerateService {
         String contentJson = objectMapper.writeValueAsString(content);
 
         PerformanceReview review = existing != null ? existing : new PerformanceReview();
-        review.setYearMonth(yearMonthStr);
+        review.setReviewMonth(yearMonthStr);
         review.setAuthor(author);
         review.setStatus("COMPLETED");
         review.setContentJson(contentJson);
@@ -105,7 +105,7 @@ public class PerformanceGenerateService {
         if (patch.getScores() != null && !patch.getScores().isEmpty()) content.setScores(patch.getScores());
 
         PerformanceConfigDto config = performanceConfigService.get();
-        YearMonth ym = YearMonth.parse(review.getYearMonth(), YM);
+        YearMonth ym = YearMonth.parse(review.getReviewMonth(), YM);
         String excelPath = performanceExcelService.export(ym, config, content);
         review.setContentJson(objectMapper.writeValueAsString(content));
         review.setExcelPath(excelPath);

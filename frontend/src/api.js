@@ -21,8 +21,8 @@ async function request(path, options = {}) {
     ...options,
   })
   const json = await res.json()
-  if (!json.success && json.message) {
-    throw new Error(json.message)
+  if (!json.success) {
+    throw new Error(json.message || '请求失败')
   }
   return json.data
 }
