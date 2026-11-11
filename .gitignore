@@ -7,6 +7,8 @@
 /output/
 /templates/performance/*.xlsx
 !/templates/performance/.gitkeep
+/templates/interview/*.xlsx
+!/templates/interview/.gitkeep
 /data/
 /.idea/
 hs_err_pid*.log

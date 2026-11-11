@@ -6,6 +6,7 @@ import Scheduler from './views/Scheduler.vue'
 import Generate from './views/Generate.vue'
 import WorkItems from './views/WorkItems.vue'
 import Performance from './views/Performance.vue'
+import Interview from './views/Interview.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -17,5 +18,6 @@ export default createRouter({
     { path: '/scheduler', name: 'scheduler', component: Scheduler },
     { path: '/generate', name: 'generate', component: Generate },
     { path: '/performance', name: 'performance', component: Performance },
+    { path: '/interview', name: 'interview', component: Interview },
   ],
 })

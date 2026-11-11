@@ -58,3 +58,15 @@ performance:
   scoreAuxiliary: 18
   scoreAttitude: 20
   scoreOther: 0
+
+# 绩效面谈（独立于绩效评估与月报）
+interview:
+  department: "技术部"
+  role: "java"
+  assessee: ""
+  # 入职日期，写入 Excel I2（yyyy-MM-dd）
+  hireDate: ""
+  templatePath: "./templates/interview/interview_template.xlsx"
+  # 本机 MonthFace 目录，仅用最新 xlsx 复制版式；勿将含真实姓名的文件提交到 git
+  # 示例: "E:/IdeaSelfSpace/MonthFace"
+  templateSearchDir: ""

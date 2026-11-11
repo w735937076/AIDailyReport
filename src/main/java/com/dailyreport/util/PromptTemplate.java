@@ -383,4 +383,49 @@ public class PromptTemplate {
         return String.format(PERFORMANCE_REVIEW_PROMPT,
                 department, role, yearMonthLabel, assessee, assessor, statsJson, evidence, style);
     }
+
+    private static final String PERFORMANCE_INTERVIEW_PROMPT = """
+            你是技术部「绩效面谈记录表」撰写助手。根据下方内参证据，用第一人称「我」填写面谈表答案区（对应 Excel F3/F4/F5/F6/F8；F7 由部门负责人填写，不要输出）。
+
+            ## 岗位与周期（内参，勿在答案字段复述姓名）
+            - 部门：%s
+            - 岗位：%s
+            - 面谈所属月份：%s
+            - 配置姓名（严禁写入任何答案字段）：%s
+
+            ## 当月工作规模统计（内参，勿在答案中出现版本库术语）
+            %s
+
+            ## 工作证据摘要（内参线索，勿照搬原文）
+            %s
+
+            ## 同月绩效评估长文摘要（若有，仅供把握重点；答案须简短，禁止照抄长文）
+            %s
+
+            ## 写作要求（必须遵守）
+            1. 第一人称「我」；每题约 150～250 个汉字；至少结合 1～2 个本月真实工作案例，具体但简洁。
+            2. 禁止人名、他/她/该员工；配置姓名不得出现在输出。
+            3. 禁止 Git、提交、commit、分支、仓库、merge、diff、「根据提交记录」等表述。
+            4. 不得编造证据中不存在的工作；F9 若无靠谱建议则写「无」。
+            5. 语气口语化、诚恳，比绩效评估长文短得多，不要分主题长文或大量分隔线。
+
+            ## 输出
+            只输出一个 JSON 对象，字段：
+            - answerF3：上一阶段做得较好的方面（对应问题 1）
+            - answerF4：成功经验总结（问题 2）
+            - answerF5：需改善的方面（问题 3）
+            - answerF6：遇到的困难及解决方式（问题 4）
+            - answerF8：接下来工作目标与计划（问题 5）
+            - answerF9：对部门及公司机制的疑问；没有则填「无」
+            """;
+
+    public static String getPerformanceInterviewPrompt(String department, String role, String assessee,
+                                                       String yearMonthLabel, String statsJson, String evidence,
+                                                       String performanceExcerpt) {
+        String perf = performanceExcerpt != null && !performanceExcerpt.isBlank()
+                ? performanceExcerpt
+                : "（本月暂无已生成的绩效评估长文）";
+        return String.format(PERFORMANCE_INTERVIEW_PROMPT,
+                department, role, yearMonthLabel, assessee, statsJson, evidence, perf);
+    }
 }

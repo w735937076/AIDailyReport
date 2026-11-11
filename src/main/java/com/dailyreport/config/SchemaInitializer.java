@@ -30,6 +30,7 @@ public class SchemaInitializer implements ApplicationRunner {
         runScript("schema_web.sql");
         ensurePerformanceReviewTable();
         migratePerformanceReviewMonthColumn();
+        ensurePerformanceInterviewTable();
     }
 
     private void ensurePerformanceReviewTable() {
@@ -61,6 +62,38 @@ public class SchemaInitializer implements ApplicationRunner {
             }
         } catch (Exception e) {
             log.warn("Could not ensure performance_review table: {}", e.getMessage());
+        }
+    }
+
+    private void ensurePerformanceInterviewTable() {
+        try {
+            Integer tables = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'performance_interview'",
+                    Integer.class);
+            if (tables != null && tables > 0) {
+                return;
+            }
+            log.info("performance_interview missing; applying bootstrap DDL");
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS performance_interview (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        interview_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM',
+                        author VARCHAR(100) NOT NULL,
+                        status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+                        content_json LONGTEXT,
+                        commit_stats_json TEXT,
+                        excel_path VARCHAR(500),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_interview_month_author (interview_month, author)
+                    )""");
+            try {
+                jdbcTemplate.execute("CREATE INDEX idx_interview_month ON performance_interview(interview_month)");
+            } catch (Exception ignored) {
+            }
+        } catch (Exception e) {
+            log.warn("Could not ensure performance_interview table: {}", e.getMessage());
         }
     }
 

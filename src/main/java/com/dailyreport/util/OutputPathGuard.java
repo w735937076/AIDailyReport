@@ -34,7 +34,8 @@ public final class OutputPathGuard {
         }
         Path normalized = new File(path).getAbsoluteFile().toPath().normalize();
         Path performanceDir = outputRoot().resolve("performance");
-        return !normalized.startsWith(performanceDir);
+        Path interviewDir = outputRoot().resolve("interview");
+        return !normalized.startsWith(performanceDir) && !normalized.startsWith(interviewDir);
     }
 
     public static void deleteReportOutputFileIfAllowed(String path) throws IOException {

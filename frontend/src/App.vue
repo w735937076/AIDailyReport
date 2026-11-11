@@ -1,12 +1,14 @@
 <script setup>
 import { computed } from 'vue'
-import { usePerformanceJob, useReportJob, useCollectJob } from './composables/useJobRunner'
+import { usePerformanceJob, useReportJob, useCollectJob, useInterviewJob } from './composables/useJobRunner'
 
 const perfJob = usePerformanceJob()
+const interviewJob = useInterviewJob()
 const reportJob = useReportJob()
 const collectJob = useCollectJob()
 
 const perfBusy = computed(() => perfJob.preflight.value || perfJob.running.value)
+const interviewBusy = computed(() => interviewJob.preflight.value || interviewJob.running.value)
 const reportBusy = computed(() => reportJob.running.value)
 const collectBusy = computed(() => collectJob.running.value)
 </script>
@@ -34,6 +36,10 @@ const collectBusy = computed(() => collectJob.running.value)
         <router-link to="/performance" class="nav-link-busy">
           <span class="nav-icon">★</span>绩效评估
           <span v-if="perfBusy" class="nav-pill-live" title="绩效表生成中">生成中</span>
+        </router-link>
+        <router-link to="/interview" class="nav-link-busy">
+          <span class="nav-icon">◆</span>绩效面谈
+          <span v-if="interviewBusy" class="nav-pill-live" title="面谈表生成中">生成中</span>
         </router-link>
       </nav>
       <p class="sidebar-foot">Git → 工作项 → AI 报告</p>

@@ -82,3 +82,18 @@ CREATE TABLE IF NOT EXISTS performance_review (
 );
 
 CREATE INDEX idx_perf_review_month ON performance_review(review_month);
+
+CREATE TABLE IF NOT EXISTS performance_interview (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    interview_month VARCHAR(7) NOT NULL COMMENT 'yyyy-MM',
+    author VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    content_json LONGTEXT,
+    commit_stats_json TEXT,
+    excel_path VARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_interview_month_author (interview_month, author)
+);
+
+CREATE INDEX idx_interview_month ON performance_interview(interview_month);

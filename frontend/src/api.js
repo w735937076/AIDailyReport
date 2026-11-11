@@ -81,6 +81,17 @@ export const api = {
     status: () => request('/api/reports/status'),
   },
   downloadUrl: (path) => `/api/export/download?path=${encodeURIComponent(path)}`,
+  interview: {
+    list: (page = 1, size = 10) => request(`/api/interview?${pageQuery(page, size)}`),
+    get: (id) => request(`/api/interview/${id}`),
+    exists: (yearMonth) => request(`/api/interview/exists?yearMonth=${encodeURIComponent(yearMonth)}`),
+    update: (id, body) =>
+      request(`/api/interview/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    generate: (body) => request('/api/interview/generate', { method: 'POST', body: JSON.stringify(body || {}) }),
+    getConfig: () => request('/api/interview/config'),
+    saveConfig: (body) => request('/api/interview/config', { method: 'PUT', body: JSON.stringify(body) }),
+    listLocalFiles: () => request('/api/interview/local-files'),
+  },
   performance: {
     list: (page = 1, size = 10) => request(`/api/performance?${pageQuery(page, size)}`),
     get: (id) => request(`/api/performance/${id}`),

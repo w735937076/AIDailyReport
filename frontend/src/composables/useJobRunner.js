@@ -3,7 +3,7 @@ import { api } from '../api'
 
 const POLL_MS = 500
 const TERMINAL = new Set(['COMPLETED', 'FAILED'])
-const PERSISTED_SCOPE_IDS = new Set(['performance', 'report', 'collect'])
+const PERSISTED_SCOPE_IDS = new Set(['performance', 'report', 'collect', 'interview'])
 
 /** @type {Map<string, object>} */
 const persistedScopes = new Map()
@@ -21,7 +21,7 @@ function getPersistedScope(id) {
       pendingCompletion: null,
       pollPromise: null,
     }
-    if (id === 'performance') {
+    if (id === 'performance' || id === 'interview') {
       scope.contextYearMonth = ref('')
     }
     persistedScopes.set(id, scope)
@@ -376,4 +376,8 @@ export function useReportJob() {
 
 export function useCollectJob() {
   return createPersistedRunner('collect')
+}
+
+export function useInterviewJob() {
+  return createPersistedRunner('interview')
 }
