@@ -12,6 +12,7 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingBlock from '../components/LoadingBlock.vue'
 import StatusChip from '../components/StatusChip.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
+import DailyGenerateDialog from '../components/DailyGenerateDialog.vue'
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer.vue'
 
 const tab = ref('daily')
@@ -19,6 +20,9 @@ const msg = ref('')
 const err = ref('')
 const genDate = ref(todayInShanghai())
 const generateLabel = ref('')
+const dailyDialogOpen = ref(false)
+const dailyNonCodeWork = ref('')
+const dailyTomorrowPlan = ref('')
 
 const {
   running: genRunning,
@@ -46,23 +50,54 @@ watch(tab, () => activePager.value.load())
 
 const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
 
-function reportBody() {
-  return { date: genDate.value, tomorrowPlan: '', nonCodeWork: '' }
+function reportBody(overrides = {}) {
+  return {
+    date: genDate.value,
+    tomorrowPlan: '',
+    nonCodeWork: '',
+    ...overrides,
+  }
 }
 
 async function refreshLists() {
   await Promise.all([dailyPager.load(), weeklyPager.load(), monthlyPager.load()])
 }
 
-async function generateForTab(kind = tab.value) {
+function requestGenerate(kind = tab.value) {
+  if (kind === 'daily') {
+    dailyDialogOpen.value = true
+    return
+  }
+  generateForTab(kind)
+}
+
+function closeDailyDialog() {
+  if (!genRunning.value) dailyDialogOpen.value = false
+}
+
+async function onDailyDialogConfirm({ nonCodeWork, tomorrowPlan }) {
+  dailyDialogOpen.value = false
+  dailyNonCodeWork.value = nonCodeWork
+  dailyTomorrowPlan.value = tomorrowPlan
+  await generateForTab('daily', { nonCodeWork, tomorrowPlan })
+}
+
+async function generateForTab(kind = tab.value, dailyFields = null) {
   err.value = ''
   msg.value = ''
   const label = tabLabels[kind]
   generateLabel.value = label
+  const body =
+    kind === 'daily' && dailyFields
+      ? reportBody({
+          nonCodeWork: dailyFields.nonCodeWork ?? '',
+          tomorrowPlan: dailyFields.tomorrowPlan ?? '',
+        })
+      : reportBody()
   const fnMap = {
-    daily: () => api.reports.generateDaily(reportBody()),
-    weekly: () => api.reports.generateWeekly(reportBody()),
-    monthly: () => api.reports.generateMonthly(reportBody()),
+    daily: () => api.reports.generateDaily(body),
+    weekly: () => api.reports.generateWeekly(body),
+    monthly: () => api.reports.generateMonthly(body),
   }
   try {
     await runGenerate(() => fnMap[kind]())
@@ -196,18 +231,18 @@ const showGenPanel = computed(
           class="btn"
           :disabled="genRunning"
           :title="`生成当前标签：${tabLabels[tab]}`"
-          @click="generateForTab()"
+          @click="requestGenerate()"
         >
           <span v-if="genRunning && generateLabel === tabLabels[tab]" class="spinner spinner--accent" />
           {{ genRunning && generateLabel === tabLabels[tab] ? '生成中…' : `生成${tabLabels[tab]}` }}
         </button>
-        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('daily')">
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="requestGenerate('daily')">
           日报
         </button>
-        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('weekly')">
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="requestGenerate('weekly')">
           周报
         </button>
-        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('monthly')">
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="requestGenerate('monthly')">
           月报
         </button>
         <RouterLink to="/generate" class="btn btn-ghost">更多选项</RouterLink>
@@ -284,6 +319,15 @@ const showGenPanel = computed(
       />
     </template>
   </section>
+
+  <DailyGenerateDialog
+    v-model:open="dailyDialogOpen"
+    v-model:non-code-work="dailyNonCodeWork"
+    v-model:tomorrow-plan="dailyTomorrowPlan"
+    :loading="genRunning"
+    @confirm="onDailyDialogConfirm"
+    @cancel="closeDailyDialog"
+  />
 
   <ReportPreviewDrawer
     :open="previewOpen"

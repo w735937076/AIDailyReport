@@ -5,11 +5,13 @@ import PageHeader from '../components/PageHeader.vue'
 import AppAlert from '../components/AppAlert.vue'
 import StatusChip from '../components/StatusChip.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
+import DailyGenerateDialog from '../components/DailyGenerateDialog.vue'
 import { useJobRunner } from '../composables/useJobRunner'
 
 const date = ref(new Date().toISOString().slice(0, 10))
 const tomorrowPlan = ref('')
 const nonCodeWork = ref('')
+const dailyDialogOpen = ref(false)
 const msg = ref('')
 const err = ref('')
 const activeLabel = ref('')
@@ -28,28 +30,44 @@ function flashSuccess(text) {
   }, 5000)
 }
 
-function body() {
+function bodyDaily() {
   return { date: date.value, tomorrowPlan: tomorrowPlan.value, nonCodeWork: nonCodeWork.value }
 }
 
-async function generateDaily() {
-  await runReport(api.reports.generateDaily, '日报')
+function bodyPeriod() {
+  return { date: date.value, tomorrowPlan: '', nonCodeWork: '' }
+}
+
+function openDailyDialog() {
+  if (running.value) return
+  dailyDialogOpen.value = true
+}
+
+function closeDailyDialog() {
+  if (!running.value) dailyDialogOpen.value = false
+}
+
+async function onDailyDialogConfirm({ nonCodeWork: nc, tomorrowPlan: tp }) {
+  nonCodeWork.value = nc
+  tomorrowPlan.value = tp
+  dailyDialogOpen.value = false
+  await runReport(api.reports.generateDaily, '日报', bodyDaily)
 }
 
 async function generateWeekly() {
-  await runReport(api.reports.generateWeekly, '周报')
+  await runReport(api.reports.generateWeekly, '周报', () => bodyPeriod())
 }
 
 async function generateMonthly() {
-  await runReport(api.reports.generateMonthly, '月报')
+  await runReport(api.reports.generateMonthly, '月报', () => bodyPeriod())
 }
 
-async function runReport(fn, label) {
+async function runReport(fn, label, bodyFn) {
   err.value = ''
   msg.value = ''
   activeLabel.value = label
   try {
-    const finished = await run(() => fn(body()))
+    const finished = await run(() => fn(bodyFn()))
     const path = finished?.result?.excelPath
     flashSuccess(`${label}生成成功${path ? '：' + path : ''}`)
   } catch {
@@ -99,12 +117,9 @@ async function exportExcel() {
         </p>
       </div>
     </div>
-    <label class="field-label">今日非代码工作（可选）</label>
-    <textarea v-model="nonCodeWork" :disabled="running" placeholder="会议、文档、沟通等" />
-    <label class="field-label">明日计划（日报用）</label>
-    <textarea v-model="tomorrowPlan" :disabled="running" placeholder="每行一条" />
+    <p class="card-hint">生成日报前会弹出窗口，填写「今日非代码工作」与「明日计划」。</p>
     <div class="action-group">
-      <button type="button" class="btn" :disabled="running" @click="generateDaily">
+      <button type="button" class="btn" :disabled="running" @click="openDailyDialog">
         <span v-if="running && activeLabel === '日报'" class="spinner spinner--accent" />
         {{ running && activeLabel === '日报' ? '生成中…' : '生成日报' }}
       </button>
@@ -123,4 +138,13 @@ async function exportExcel() {
     </div>
     <JobProgressPanel :job="job" :visible="running || status === 'COMPLETED' || status === 'FAILED'" />
   </section>
+
+  <DailyGenerateDialog
+    v-model:open="dailyDialogOpen"
+    v-model:non-code-work="nonCodeWork"
+    v-model:tomorrow-plan="tomorrowPlan"
+    :loading="running"
+    @confirm="onDailyDialogConfirm"
+    @cancel="closeDailyDialog"
+  />
 </template>

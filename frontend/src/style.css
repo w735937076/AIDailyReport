@@ -1271,6 +1271,31 @@ table.data-table {
   padding: 0 1.25rem 1.15rem;
 }
 
+.confirm-dialog--form {
+  width: min(480px, 100%);
+  max-height: min(90vh, 36rem);
+}
+
+.confirm-dialog__hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.confirm-dialog__body {
+  padding: 0.25rem 1.25rem 0.75rem;
+}
+
+.confirm-dialog__body .field-label {
+  margin-bottom: 0.35rem;
+}
+
+.confirm-dialog__body textarea {
+  margin-bottom: 0.85rem;
+}
+
 .confirm-fade-enter-active,
 .confirm-fade-leave-active {
   transition: opacity 0.2s ease;
