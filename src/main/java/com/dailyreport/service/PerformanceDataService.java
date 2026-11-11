@@ -86,14 +86,12 @@ public class PerformanceDataService {
                         .append(": ").append(shorten(w.getPlan(), 80)).append("\n");
             }
         }
-        sb.append("\n提交样本（按仓库主题归类）:\n");
+        sb.append("\n补充工作线索（按项目归类，供归纳；勿在绩效正文中复述下列原文）:\n");
         int shown = 0;
         for (GitCommitLog c : data.commits()) {
             if (shown >= maxCommits) break;
-            String diff = c.getDiffText();
-            int diffLen = diff != null ? diff.length() : 0;
-            sb.append("- [").append(c.getRepoName()).append("] ").append(shorten(c.getMessage(), 120));
-            sb.append(" (diffLen=").append(diffLen).append(")\n");
+            sb.append("- 项目「").append(c.getRepoName() != null ? c.getRepoName() : "—")
+                    .append("」: ").append(shorten(c.getMessage(), 120)).append("\n");
             shown++;
         }
         return sb.toString();
