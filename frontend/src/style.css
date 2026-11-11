@@ -1155,6 +1155,79 @@ table.data-table {
   gap: 0.35rem;
 }
 
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(28, 25, 23, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-dialog {
+  margin: 0;
+  padding: 0;
+  border: none;
+  width: min(420px, 100%);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--border-hairline),
+    0 24px 48px rgba(28, 25, 23, 0.18);
+  overflow: hidden;
+}
+
+.confirm-dialog__head {
+  padding: 1.15rem 1.25rem 0;
+}
+
+.confirm-dialog__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.confirm-dialog__message {
+  margin: 0;
+  padding: 0.75rem 1.25rem 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 1.25rem 1.15rem;
+}
+
+.confirm-fade-enter-active,
+.confirm-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.confirm-fade-enter-from,
+.confirm-fade-leave-to {
+  opacity: 0;
+}
+
+.confirm-pop-enter-active,
+.confirm-pop-leave-active {
+  transition: opacity 0.2s ease, transform 0.22s ease;
+}
+
+.confirm-pop-enter-from,
+.confirm-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+}
+
 .nav-pill-live {
   font-size: 0.625rem;
   font-weight: 600;

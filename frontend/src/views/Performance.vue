@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingBlock from '../components/LoadingBlock.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
 import PerformancePreviewDrawer from '../components/PerformancePreviewDrawer.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useJobRunner } from '../composables/useJobRunner'
 import { usePagination } from '../composables/usePagination'
 
@@ -34,6 +35,11 @@ const {
   resumePolling,
   takePendingCompletion,
 } = perfJob
+
+const checkingExists = ref(false)
+const overwriteOpen = ref(false)
+const overwriteMonthLabel = ref('')
+let overwriteResolve = null
 
 const drawerOpen = ref(false)
 const drawerLoading = ref(false)
@@ -172,6 +178,30 @@ function formatUpdatedAt(iso) {
   }
 }
 
+function askOverwriteConfirm(ym) {
+  overwriteMonthLabel.value = formatReviewMonth(ym)
+  overwriteOpen.value = true
+  return new Promise((resolve) => {
+    overwriteResolve = resolve
+  })
+}
+
+function closeOverwriteConfirm(result) {
+  overwriteOpen.value = false
+  if (overwriteResolve) {
+    overwriteResolve(result)
+    overwriteResolve = null
+  }
+}
+
+function onOverwriteConfirm() {
+  closeOverwriteConfirm(true)
+}
+
+function onOverwriteCancel() {
+  closeOverwriteConfirm(false)
+}
+
 async function onSaved(updated) {
   active.value = updated
   activeContent.value = parseContent(updated.contentJson)
@@ -184,27 +214,25 @@ async function generate() {
   err.value = ''
   msg.value = ''
   contextYearMonth.value = yearMonth.value
-  beginPending(`正在准备 ${formatReviewMonth(yearMonth.value)} 绩效评估…`, 8)
 
   let replaceExisting = false
+  checkingExists.value = true
   try {
-    updatePending('正在检查当月是否已有记录…', 12)
     const exists = await api.performance.exists(yearMonth.value)
     if (exists) {
-      updatePending('等待确认是否覆盖已有记录…', 18)
-      if (!window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
-        cancelPending()
-        return
-      }
+      const ok = await askOverwriteConfirm(yearMonth.value)
+      if (!ok) return
       replaceExisting = true
     }
-    updatePending('正在提交生成任务…', 22)
   } catch (e) {
-    const m = e.message || '检查当月记录失败'
-    failPending('检查当月记录失败', m)
-    err.value = m
+    err.value = e.message || '检查当月记录失败'
     return
+  } finally {
+    checkingExists.value = false
   }
+
+  beginPending(`正在准备 ${formatReviewMonth(yearMonth.value)} 绩效评估…`, 8)
+  updatePending('正在提交生成任务…', 22)
 
   try {
     const finished = await run(() =>
@@ -234,7 +262,7 @@ async function generate() {
     <div class="row">
       <div>
         <label class="field-label">月份</label>
-        <input v-model="yearMonth" type="month" :disabled="busy" />
+        <input v-model="yearMonth" type="month" :disabled="busy || checkingExists" />
       </div>
       <div>
         <label class="field-label">任务状态</label>
@@ -243,11 +271,11 @@ async function generate() {
         </p>
       </div>
       <div class="actions">
-        <button type="button" class="btn primary" :disabled="busy" @click="generate">
-          <span v-if="busy" class="spinner spinner--accent" />
-          {{ busy ? '生成中…' : '生成绩效表' }}
+        <button type="button" class="btn primary" :disabled="busy || checkingExists" @click="generate">
+          <span v-if="busy || checkingExists" class="spinner spinner--accent" />
+          {{ busy ? '生成中…' : checkingExists ? '检查中…' : '生成绩效表' }}
         </button>
-        <button type="button" class="btn" :disabled="busy" @click="configOpen = !configOpen">
+        <button type="button" class="btn" :disabled="busy || checkingExists" @click="configOpen = !configOpen">
           配置
         </button>
       </div>
@@ -341,6 +369,17 @@ async function generate() {
       />
     </template>
   </section>
+
+  <ConfirmDialog
+    :open="overwriteOpen"
+    title="覆盖已有记录"
+    :message="`${overwriteMonthLabel || '该月份'}已有绩效记录。覆盖后将重新调用 AI 生成并替换当前内容与 Excel，此操作不可撤销。`"
+    confirm-label="覆盖并重新生成"
+    cancel-label="取消"
+    danger
+    @confirm="onOverwriteConfirm"
+    @cancel="onOverwriteCancel"
+  />
 
   <PerformancePreviewDrawer
     :open="drawerOpen"
