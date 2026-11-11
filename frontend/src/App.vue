@@ -1,9 +1,14 @@
 <script setup>
 import { computed } from 'vue'
-import { usePerformanceJob } from './composables/useJobRunner'
+import { usePerformanceJob, useReportJob, useCollectJob } from './composables/useJobRunner'
 
 const perfJob = usePerformanceJob()
+const reportJob = useReportJob()
+const collectJob = useCollectJob()
+
 const perfBusy = computed(() => perfJob.preflight.value || perfJob.running.value)
+const reportBusy = computed(() => reportJob.running.value)
+const collectBusy = computed(() => collectJob.running.value)
 </script>
 
 <template>
@@ -14,8 +19,14 @@ const perfBusy = computed(() => perfJob.preflight.value || perfJob.running.value
         <span>AIDailyReport</span>
       </div>
       <nav class="nav">
-        <router-link to="/"><span class="nav-icon">▣</span>报告总览</router-link>
-        <router-link to="/work-items"><span class="nav-icon">☰</span>工作项</router-link>
+        <router-link to="/" class="nav-link-busy">
+          <span class="nav-icon">▣</span>报告总览
+          <span v-if="reportBusy" class="nav-pill-live" title="报告生成中">生成中</span>
+        </router-link>
+        <router-link to="/work-items" class="nav-link-busy">
+          <span class="nav-icon">☰</span>工作项
+          <span v-if="collectBusy" class="nav-pill-live" title="Git 采集中">采集中</span>
+        </router-link>
         <router-link to="/projects"><span class="nav-icon">⌥</span>Git 项目</router-link>
         <router-link to="/ai"><span class="nav-icon">◇</span>AI 设置</router-link>
         <router-link to="/scheduler"><span class="nav-icon">◷</span>定时采集</router-link>

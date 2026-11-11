@@ -1,18 +1,38 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { api } from '../api'
 import { usePagination } from '../composables/usePagination'
+import { useJobRunner } from '../composables/useJobRunner'
+import { todayInShanghai } from '../utils/dateShanghai'
 import PageHeader from '../components/PageHeader.vue'
 import Pagination from '../components/Pagination.vue'
 import AppAlert from '../components/AppAlert.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingBlock from '../components/LoadingBlock.vue'
 import StatusChip from '../components/StatusChip.vue'
+import JobProgressPanel from '../components/JobProgressPanel.vue'
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer.vue'
 
 const tab = ref('daily')
 const msg = ref('')
 const err = ref('')
+const genDate = ref(todayInShanghai())
+const generateLabel = ref('')
+
+const {
+  running: genRunning,
+  job: genJob,
+  status: genStatus,
+  error: genError,
+  run: runGenerate,
+  resumePolling,
+  takePendingCompletion,
+} = useJobRunner({ scope: 'report' })
+
+watch(genError, (v) => {
+  if (v) err.value = v
+})
 
 const dailyPager = usePagination(({ page, size }) => api.reports.dailyList(page, size), 10)
 const weeklyPager = usePagination(({ page, size }) => api.reports.periodList('WEEK', page, size), 10)
@@ -24,8 +44,49 @@ const activePager = computed(() =>
 
 watch(tab, () => activePager.value.load())
 
-onMounted(() => {
-  Promise.all([dailyPager.load(), weeklyPager.load(), monthlyPager.load()]).catch((e) => {
+const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
+
+function reportBody() {
+  return { date: genDate.value, tomorrowPlan: '', nonCodeWork: '' }
+}
+
+async function refreshLists() {
+  await Promise.all([dailyPager.load(), weeklyPager.load(), monthlyPager.load()])
+}
+
+async function generateForTab(kind = tab.value) {
+  err.value = ''
+  msg.value = ''
+  const label = tabLabels[kind]
+  generateLabel.value = label
+  const fnMap = {
+    daily: () => api.reports.generateDaily(reportBody()),
+    weekly: () => api.reports.generateWeekly(reportBody()),
+    monthly: () => api.reports.generateMonthly(reportBody()),
+  }
+  try {
+    await runGenerate(() => fnMap[kind]())
+    await refreshLists()
+    msg.value = `${label}生成成功`
+  } catch {
+    /* panel + err */
+  } finally {
+    generateLabel.value = ''
+  }
+}
+
+async function onReportJobSettled() {
+  const pending = takePendingCompletion()
+  if (pending) {
+    await refreshLists()
+    msg.value = '报告生成完成'
+  }
+}
+
+onMounted(async () => {
+  await resumePolling()
+  await onReportJobSettled()
+  refreshLists().catch((e) => {
     err.value = e.message
   })
 })
@@ -101,7 +162,9 @@ function onSizeChange(s) {
   activePager.value.changeSize(s)
 }
 
-const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
+const showGenPanel = computed(
+  () => genRunning.value || genStatus.value === 'COMPLETED' || genStatus.value === 'FAILED',
+)
 </script>
 
 <template>
@@ -112,6 +175,46 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
 
   <AppAlert :message="err" type="err" />
   <AppAlert :message="msg" type="ok" />
+
+  <section class="card">
+    <h2 class="card-title">生成报告</h2>
+    <p class="card-hint">与「生成报告」页相同流程；离开本页后进度仍会在侧边栏显示。</p>
+    <div class="generate-toolbar">
+      <div class="filter-field">
+        <label class="field-label">基准日期</label>
+        <input v-model="genDate" type="date" :disabled="genRunning" />
+      </div>
+      <div class="filter-field" style="min-width: 7rem">
+        <label class="field-label">任务状态</label>
+        <p style="margin: 0; min-height: var(--control-h); display: flex; align-items: center">
+          <StatusChip :status="genStatus" />
+        </p>
+      </div>
+      <div class="generate-toolbar__actions">
+        <button
+          type="button"
+          class="btn"
+          :disabled="genRunning"
+          :title="`生成当前标签：${tabLabels[tab]}`"
+          @click="generateForTab()"
+        >
+          <span v-if="genRunning && generateLabel === tabLabels[tab]" class="spinner spinner--accent" />
+          {{ genRunning && generateLabel === tabLabels[tab] ? '生成中…' : `生成${tabLabels[tab]}` }}
+        </button>
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('daily')">
+          日报
+        </button>
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('weekly')">
+          周报
+        </button>
+        <button type="button" class="btn btn-secondary" :disabled="genRunning" @click="generateForTab('monthly')">
+          月报
+        </button>
+        <RouterLink to="/generate" class="btn btn-ghost">更多选项</RouterLink>
+      </div>
+    </div>
+    <JobProgressPanel :job="genJob" :visible="showGenPanel" prominent />
+  </section>
 
   <div class="stat-row">
     <div v-for="(pager, key) in { daily: dailyPager, weekly: weeklyPager, monthly: monthlyPager }" :key="key" class="stat-card">
@@ -139,7 +242,7 @@ const tabLabels = { daily: '日报', weekly: '周报', monthly: '月报' }
       <EmptyState
         v-if="!activePager.items.value.length"
         :title="`暂无${tabLabels[tab]}`"
-        hint="前往「生成报告」创建第一条记录。"
+        hint="使用上方「生成报告」或前往「生成报告」页创建第一条记录。"
         icon="📄"
       />
 

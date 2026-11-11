@@ -185,6 +185,13 @@ a {
   width: 100%;
 }
 
+.card-hint {
+  margin: -0.35rem 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .card-title {
   margin: 0 0 1rem;
   font-size: 0.8125rem;
@@ -527,6 +534,60 @@ table.data-table {
 .data-table .col-wi-actions {
   width: 4.5rem;
   text-align: right;
+}
+
+.filter-bar--aligned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.filter-bar--aligned .filter-field {
+  flex: 0 1 auto;
+  min-width: 9.5rem;
+}
+
+.filter-bar--aligned .filter-field input,
+.filter-bar--aligned .filter-field select {
+  width: 100%;
+  margin-bottom: 0;
+  height: var(--control-h);
+}
+
+.filter-bar--aligned .field-label {
+  margin-bottom: 0.35rem;
+}
+
+.filter-bar--aligned .filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.generate-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+}
+
+.generate-toolbar .filter-field {
+  min-width: 11rem;
+}
+
+.generate-toolbar .filter-field input {
+  margin-bottom: 0;
+}
+
+.generate-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .filter-bar select {

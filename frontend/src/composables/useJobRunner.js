@@ -3,32 +3,30 @@ import { api } from '../api'
 
 const POLL_MS = 500
 const TERMINAL = new Set(['COMPLETED', 'FAILED'])
+const PERSISTED_SCOPE_IDS = new Set(['performance', 'report', 'collect'])
 
-/** @typedef {{ scope: string, persist?: boolean }} JobRunnerOptions */
+/** @type {Map<string, object>} */
+const persistedScopes = new Map()
 
-function createPerformanceScope() {
-  return {
-    running: ref(false),
-    job: ref(null),
-    status: ref('IDLE'),
-    error: ref(''),
-    preflight: ref(false),
-    contextYearMonth: ref(''),
-    activeJobId: null,
-    timer: null,
-    pendingCompletion: null,
-    pollPromise: null,
-    persist: true,
+function getPersistedScope(id) {
+  if (!persistedScopes.has(id)) {
+    const scope = {
+      running: ref(false),
+      job: ref(null),
+      status: ref('IDLE'),
+      error: ref(''),
+      preflight: ref(false),
+      activeJobId: null,
+      timer: null,
+      pendingCompletion: null,
+      pollPromise: null,
+    }
+    if (id === 'performance') {
+      scope.contextYearMonth = ref('')
+    }
+    persistedScopes.set(id, scope)
   }
-}
-
-let performanceScope = null
-
-function getPerformanceScope() {
-  if (!performanceScope) {
-    performanceScope = createPerformanceScope()
-  }
-  return performanceScope
+  return persistedScopes.get(id)
 }
 
 function stopPollScope(scope) {
@@ -92,8 +90,8 @@ function pollUntilDoneScoped(scope, jobId) {
   return scope.pollPromise
 }
 
-function createScopedPerformanceRunner() {
-  const scope = getPerformanceScope()
+function createPersistedRunner(scopeId) {
+  const scope = getPersistedScope(scopeId)
 
   function beginPending(message = '准备中…', percent = 5) {
     if (isPollingScope(scope)) return
@@ -141,6 +139,7 @@ function createScopedPerformanceRunner() {
     scope.running.value = true
     scope.status.value = 'RUNNING'
     scope.error.value = ''
+    scope.preflight.value = false
     scope.job.value = { status: 'PENDING', percent: 0, message: '任务已创建…' }
     try {
       const { jobId } = await startFn()
@@ -195,13 +194,12 @@ function createScopedPerformanceRunner() {
     )
   }
 
-  return {
+  const runner = {
     running: scope.running,
     job: scope.job,
     status: scope.status,
     error: scope.error,
     preflight: scope.preflight,
-    contextYearMonth: scope.contextYearMonth,
     run,
     reset,
     beginPending,
@@ -212,14 +210,14 @@ function createScopedPerformanceRunner() {
     takePendingCompletion,
     isActive,
   }
+  if (scope.contextYearMonth) {
+    runner.contextYearMonth = scope.contextYearMonth
+  }
+  return runner
 }
 
-/** Ephemeral runner: per-page instance, stops polling on unmount (generate / scheduler). */
-export function useJobRunner(options) {
-  if (options && typeof options === 'object' && options.scope === 'performance') {
-    return createScopedPerformanceRunner()
-  }
-
+/** Ephemeral runner: per-page instance, stops polling on unmount. */
+function createEphemeralRunner() {
   const running = ref(false)
   const job = ref(null)
   const status = ref('IDLE')
@@ -360,7 +358,22 @@ export function useJobRunner(options) {
   }
 }
 
-/** Shared performance job state for sidebar + page (survives route changes). */
+export function useJobRunner(options) {
+  const scope = options?.scope
+  if (scope && PERSISTED_SCOPE_IDS.has(scope)) {
+    return createPersistedRunner(scope)
+  }
+  return createEphemeralRunner()
+}
+
 export function usePerformanceJob() {
-  return createScopedPerformanceRunner()
+  return createPersistedRunner('performance')
+}
+
+export function useReportJob() {
+  return createPersistedRunner('report')
+}
+
+export function useCollectJob() {
+  return createPersistedRunner('collect')
 }
