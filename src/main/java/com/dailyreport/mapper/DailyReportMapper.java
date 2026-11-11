@@ -43,4 +43,7 @@ public interface DailyReportMapper {
 
     @Select("SELECT * FROM daily_report ORDER BY report_date DESC LIMIT #{limit} OFFSET #{offset}")
     List<DailyReport> findPage(@Param("offset") int offset, @Param("limit") int limit);
+
+    @Delete("DELETE FROM daily_report WHERE id = #{id}")
+    int deleteById(@Param("id") Long id);
 }

@@ -13,6 +13,7 @@ import LoadingBlock from '../components/LoadingBlock.vue'
 import StatusChip from '../components/StatusChip.vue'
 import JobProgressPanel from '../components/JobProgressPanel.vue'
 import DailyGenerateDialog from '../components/DailyGenerateDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ReportPreviewDrawer from '../components/ReportPreviewDrawer.vue'
 
 const tab = ref('daily')
@@ -23,6 +24,10 @@ const generateLabel = ref('')
 const dailyDialogOpen = ref(false)
 const dailyNonCodeWork = ref('')
 const dailyTomorrowPlan = ref('')
+const deleteOpen = ref(false)
+const deleteLoading = ref(false)
+/** @type {import('vue').Ref<{ id: number, kind: string, label: string } | null>} */
+const deleteTarget = ref(null)
 
 const {
   running: genRunning,
@@ -200,6 +205,72 @@ function onSizeChange(s) {
 const showGenPanel = computed(
   () => genRunning.value || genStatus.value === 'COMPLETED' || genStatus.value === 'FAILED',
 )
+
+const deleteDialogMessage = computed(() => {
+  const t = deleteTarget.value
+  if (!t) return ''
+  return `确定删除「${t.label}」吗？数据库记录及 output 目录下的导出文件将被移除，此操作不可撤销。`
+})
+
+function reportRowLabel(row) {
+  if (tab.value === 'daily') {
+    return `日报 · ${row.reportDate}`
+  }
+  const type = tab.value === 'weekly' ? '周报' : '月报'
+  return `${type} · ${row.startDate} ~ ${row.endDate}`
+}
+
+function requestDelete(row) {
+  deleteTarget.value = {
+    id: row.id,
+    kind: tab.value,
+    label: reportRowLabel(row),
+  }
+  deleteOpen.value = true
+}
+
+function cancelDelete() {
+  if (deleteLoading.value) return
+  deleteOpen.value = false
+  deleteTarget.value = null
+}
+
+async function syncAfterDelete() {
+  await refreshLists()
+  await activePager.value.load()
+}
+
+async function onDeleteConfirm() {
+  const target = deleteTarget.value
+  if (!target) return
+  deleteLoading.value = true
+  err.value = ''
+  try {
+    if (target.kind === 'daily') {
+      await api.reports.deleteDaily(target.id)
+    } else {
+      await api.reports.deletePeriod(target.id)
+    }
+    if (previewOpen.value && previewId.value === target.id) {
+      previewOpen.value = false
+    }
+    deleteOpen.value = false
+    deleteTarget.value = null
+    flashOk('已删除')
+    await syncAfterDelete()
+  } catch (e) {
+    const gone = e?.message && (e.message.includes('不存在') || e.message.includes('404'))
+    if (gone) {
+      deleteOpen.value = false
+      deleteTarget.value = null
+      await syncAfterDelete()
+    } else {
+      err.value = e.message
+    }
+  } finally {
+    deleteLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -303,7 +374,10 @@ const showGenPanel = computed(
               <td v-else class="col-report-date">{{ r.startDate }} ~ {{ r.endDate }}</td>
               <td class="col-report-status"><StatusChip :status="r.status" /></td>
               <td class="col-report-actions">
-                <button type="button" class="btn btn-ghost btn-sm" @click.stop="openPreview(r)">预览</button>
+                <div class="toolbar-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" @click.stop="openPreview(r)">预览</button>
+                  <button type="button" class="btn btn-danger btn-sm" @click.stop="requestDelete(r)">删除</button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -319,6 +393,18 @@ const showGenPanel = computed(
       />
     </template>
   </section>
+
+  <ConfirmDialog
+    :open="deleteOpen"
+    title="删除报告"
+    :message="deleteDialogMessage"
+    confirm-label="删除"
+    cancel-label="取消"
+    danger
+    :loading="deleteLoading"
+    @confirm="onDeleteConfirm"
+    @cancel="cancelDelete"
+  />
 
   <DailyGenerateDialog
     v-model:open="dailyDialogOpen"

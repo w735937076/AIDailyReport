@@ -39,4 +39,7 @@ public interface PeriodReportMapper {
 
     @Select("SELECT * FROM period_report WHERE type = #{type} ORDER BY start_date DESC LIMIT #{limit} OFFSET #{offset}")
     List<PeriodReport> findPageByType(@Param("type") String type, @Param("offset") int offset, @Param("limit") int limit);
+
+    @Delete("DELETE FROM period_report WHERE id = #{id}")
+    int deleteById(@Param("id") Long id);
 }

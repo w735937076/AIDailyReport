@@ -70,6 +70,19 @@ public class ReportController {
         return ApiResponse.ok(report);
     }
 
+    @DeleteMapping("/daily/{id}")
+    public ApiResponse<Void> deleteDaily(@PathVariable Long id) {
+        try {
+            boolean deleted = reportGenerateService.deleteDailyReport(id);
+            if (!deleted) {
+                return ApiResponse.fail("日报不存在");
+            }
+            return ApiResponse.ok(null);
+        } catch (Exception e) {
+            return ApiResponse.fail("删除失败: " + e.getMessage());
+        }
+    }
+
     @PutMapping("/daily/{id}")
     public ApiResponse<DailyReport> updateDaily(@PathVariable Long id, @RequestBody UpdateDailyReportRequest req) {
         if (req == null) {
@@ -89,6 +102,19 @@ public class ReportController {
             return ApiResponse.fail("报告不存在");
         }
         return ApiResponse.ok(report);
+    }
+
+    @DeleteMapping("/period/{id}")
+    public ApiResponse<Void> deletePeriod(@PathVariable Long id) {
+        try {
+            boolean deleted = reportGenerateService.deletePeriodReport(id);
+            if (!deleted) {
+                return ApiResponse.fail("报告不存在");
+            }
+            return ApiResponse.ok(null);
+        } catch (Exception e) {
+            return ApiResponse.fail("删除失败: " + e.getMessage());
+        }
     }
 
     @PutMapping("/period/{id}")
