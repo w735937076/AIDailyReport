@@ -63,6 +63,8 @@ public class PerformanceExcelService {
             adjustRowHeight(sheet, 11, content.getAuxiliaryD12());
             adjustRowHeight(sheet, 14, content.getAttitudeD15());
 
+            applyConfigIdentityFields(sheet, config);
+
             try (OutputStream os = Files.newOutputStream(outPath)) {
                 wb.write(os);
             }
@@ -159,5 +161,97 @@ public class PerformanceExcelService {
 
     private static String safe(String s) {
         return s == null ? "员工" : s.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    /**
+     * Overwrite signature / header identity cells so MonthPerformance template leftovers
+     * (e.g. wrong 评估人) are replaced from current 绩效配置.
+     */
+    static void applyConfigIdentityFields(Sheet sheet, PerformanceConfigDto config) {
+        String assessee = trimOrEmpty(config.getAssessee());
+        String assessor = trimOrEmpty(config.getAssessor());
+        String department = trimOrEmpty(config.getDepartment());
+        String role = trimOrEmpty(config.getRole());
+
+        int lastRow = sheet.getLastRowNum();
+        for (int r = 0; r <= lastRow && r < 60; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            short lastCell = row.getLastCellNum();
+            for (int c = 0; c < lastCell && c < 24; c++) {
+                String text = readCellAsString(row.getCell(c));
+                if (text == null || text.isBlank()) {
+                    continue;
+                }
+                String t = text.trim();
+                if (t.contains("被评估人")) {
+                    setCell(sheet, r, c, "被评估人：" + assessee);
+                } else if (t.contains("评估人") && !t.contains("被评估人")) {
+                    setCell(sheet, r, c, "评估人：" + assessor);
+                } else if (t.contains("人事确认") || t.contains("人事审核")) {
+                    setCell(sheet, r, c, t.contains("人事确认") ? "人事确认：" : "人事审核：");
+                } else if (t.startsWith("日期：") || t.startsWith("日期:")) {
+                    setCell(sheet, r, c, "日期：");
+                }
+            }
+        }
+
+        fillHeaderIdentityPairs(sheet, department, role, assessee);
+
+        // Official MonthPerformance signature row (Excel row 39 → index 38): B / D / F / H
+        setCell(sheet, 38, 1, "被评估人：" + assessee);
+        setCell(sheet, 38, 3, "评估人：" + assessor);
+        setCell(sheet, 38, 5, "人事确认：");
+        setCell(sheet, 38, 7, "日期：");
+    }
+
+    private static void fillHeaderIdentityPairs(Sheet sheet, String department, String role, String assessee) {
+        for (int r = 0; r <= 6; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            for (int c = 0; c < 12; c++) {
+                String label = readCellAsString(row.getCell(c)).trim();
+                if (label.equals("部门") || label.equals("部门：") || label.equals("部门:")) {
+                    setCell(sheet, r, c + 1, department);
+                } else if (label.equals("岗位") || label.equals("职位") || label.equals("岗位：") || label.equals("职位：")) {
+                    setCell(sheet, r, c + 1, role);
+                } else if (label.equals("姓名") || label.equals("姓名：")) {
+                    setCell(sheet, r, c + 1, assessee);
+                }
+            }
+        }
+    }
+
+    private static String readCellAsString(Cell cell) {
+        if (cell == null) {
+            return "";
+        }
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue();
+            case NUMERIC -> DateUtil.isCellDateFormatted(cell)
+                    ? cell.getLocalDateTimeCellValue().toLocalDate().toString()
+                    : String.valueOf(cell.getNumericCellValue());
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> {
+                try {
+                    yield cell.getStringCellValue();
+                } catch (Exception e) {
+                    try {
+                        yield String.valueOf(cell.getNumericCellValue());
+                    } catch (Exception e2) {
+                        yield "";
+                    }
+                }
+            }
+            default -> "";
+        };
+    }
+
+    private static String trimOrEmpty(String s) {
+        return s == null ? "" : s.trim();
     }
 }
