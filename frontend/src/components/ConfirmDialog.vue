@@ -31,13 +31,13 @@ function onKeydown(e) {
         @keydown="onKeydown"
       >
         <Transition name="confirm-pop">
-          <dialog
+          <div
             v-if="open"
             class="confirm-dialog"
             role="alertdialog"
             aria-modal="true"
             :aria-labelledby="open ? 'confirm-dialog-title' : undefined"
-            open
+            tabindex="-1"
             @click.stop
           >
             <header class="confirm-dialog__head">
@@ -63,7 +63,7 @@ function onKeydown(e) {
                 {{ confirmLabel }}
               </button>
             </footer>
-          </dialog>
+          </div>
         </Transition>
       </div>
     </Transition>
