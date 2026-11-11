@@ -1167,14 +1167,6 @@ table.data-table {
   backdrop-filter: blur(4px);
 }
 
-.confirm-backdrop .confirm-pop-enter-active,
-.confirm-backdrop .confirm-pop-leave-active {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-
 .confirm-dialog {
   position: relative;
   margin: 0;
