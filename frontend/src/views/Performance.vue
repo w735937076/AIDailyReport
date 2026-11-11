@@ -17,19 +17,23 @@ const msg = ref('')
 const err = ref('')
 const configOpen = ref(false)
 const config = ref({})
-const generating = ref(false)
 const pager = usePagination(({ page, size }) => api.performance.list(page, size), 10)
+const perfJob = useJobRunner({ scope: 'performance' })
 const {
   running,
   job,
   status,
   error: jobError,
+  preflight,
+  contextYearMonth,
   run,
   beginPending,
   updatePending,
   cancelPending,
   failPending,
-} = useJobRunner()
+  resumePolling,
+  takePendingCompletion,
+} = perfJob
 
 const drawerOpen = ref(false)
 const drawerLoading = ref(false)
@@ -38,9 +42,22 @@ const activeContent = ref({})
 
 let dismissTimer = null
 
+function formatReviewMonth(ym) {
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return ym || '—'
+  const [y, m] = ym.split('-')
+  return `${y}年${Number(m)}月`
+}
+
+const busy = computed(() => preflight.value || running.value)
+
 const panelVisible = computed(
-  () => generating.value || running.value || status.value === 'COMPLETED' || status.value === 'FAILED',
+  () => busy.value || status.value === 'COMPLETED' || status.value === 'FAILED',
 )
+
+const progressSubtitle = computed(() => {
+  const ym = contextYearMonth.value || yearMonth.value
+  return ym ? `${formatReviewMonth(ym)} · 绩效生成` : '绩效生成'
+})
 
 watch(jobError, (v) => {
   if (v) err.value = v
@@ -73,8 +90,27 @@ async function loadConfig() {
   config.value = await api.performance.getConfig()
 }
 
+async function applyGenerateSuccess(finished) {
+  if (!finished) return
+  const id = finished?.result?.id
+  flashSuccess(`绩效生成完成${id ? '（记录 #' + id + '）' : ''}`)
+  await pager.load()
+  if (id) {
+    const row = pager.items.value.find((r) => r.id === id) || { id }
+    await openPreview(row)
+  }
+}
+
 onMounted(async () => {
   err.value = ''
+  if (contextYearMonth.value) {
+    yearMonth.value = contextYearMonth.value
+  }
+  resumePolling()
+  const pendingDone = takePendingCompletion()
+  if (pendingDone) {
+    await applyGenerateSuccess(pendingDone)
+  }
   try {
     await loadConfig()
   } catch (e) {
@@ -119,12 +155,6 @@ function downloadExcel(path) {
   if (path) window.open(api.downloadUrl(path), '_blank')
 }
 
-function formatReviewMonth(ym) {
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) return ym || '—'
-  const [y, m] = ym.split('-')
-  return `${y}年${Number(m)}月`
-}
-
 function formatUpdatedAt(iso) {
   if (!iso) return '—'
   try {
@@ -150,11 +180,11 @@ async function onSaved(updated) {
 }
 
 async function generate() {
-  if (generating.value || running.value) return
+  if (busy.value) return
   err.value = ''
   msg.value = ''
-  generating.value = true
-  beginPending(`正在准备 ${yearMonth.value} 绩效评估…`, 8)
+  contextYearMonth.value = yearMonth.value
+  beginPending(`正在准备 ${formatReviewMonth(yearMonth.value)} 绩效评估…`, 8)
 
   let replaceExisting = false
   try {
@@ -164,7 +194,6 @@ async function generate() {
       updatePending('等待确认是否覆盖已有记录…', 18)
       if (!window.confirm(`${yearMonth.value} 已有记录，确认覆盖重新生成？`)) {
         cancelPending()
-        generating.value = false
         return
       }
       replaceExisting = true
@@ -174,7 +203,6 @@ async function generate() {
     const m = e.message || '检查当月记录失败'
     failPending('检查当月记录失败', m)
     err.value = m
-    generating.value = false
     return
   }
 
@@ -182,19 +210,12 @@ async function generate() {
     const finished = await run(() =>
       api.performance.generate({ yearMonth: yearMonth.value, replaceExisting }),
     )
-    const id = finished?.result?.id
-    flashSuccess(`绩效生成完成${id ? '（记录 #' + id + '）' : ''}`)
-    await pager.load()
-    if (id) {
-      const row = pager.items.value.find((r) => r.id === id) || { id }
-      await openPreview(row)
-    }
+    takePendingCompletion()
+    await applyGenerateSuccess(finished)
   } catch (e) {
     if (!jobError.value) {
       err.value = e.message || '生成绩效失败'
     }
-  } finally {
-    generating.value = false
   }
 }
 </script>
@@ -208,12 +229,12 @@ async function generate() {
   <AppAlert :message="err" type="err" />
   <AppAlert :message="msg" type="ok" />
 
-  <section class="card">
+  <section class="card" :class="{ 'card--job-active': busy }">
     <h2 class="card-title">生成</h2>
     <div class="row">
       <div>
         <label class="field-label">月份</label>
-        <input v-model="yearMonth" type="month" :disabled="generating || running" />
+        <input v-model="yearMonth" type="month" :disabled="busy" />
       </div>
       <div>
         <label class="field-label">任务状态</label>
@@ -222,16 +243,21 @@ async function generate() {
         </p>
       </div>
       <div class="actions">
-        <button type="button" class="btn primary" :disabled="generating || running" @click="generate">
-          <span v-if="generating || running" class="spinner spinner--accent" />
-          {{ generating || running ? '生成中…' : '生成绩效表' }}
+        <button type="button" class="btn primary" :disabled="busy" @click="generate">
+          <span v-if="busy" class="spinner spinner--accent" />
+          {{ busy ? '生成中…' : '生成绩效表' }}
         </button>
-        <button type="button" class="btn" :disabled="generating || running" @click="configOpen = !configOpen">
+        <button type="button" class="btn" :disabled="busy" @click="configOpen = !configOpen">
           配置
         </button>
       </div>
     </div>
-    <JobProgressPanel :job="job" :visible="panelVisible" />
+    <JobProgressPanel
+      :job="job"
+      :visible="panelVisible"
+      prominent
+      :subtitle="progressSubtitle"
+    />
   </section>
 
   <section v-if="configOpen" class="card">
@@ -349,6 +375,10 @@ async function generate() {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+}
+.card--job-active {
+  border-color: rgba(29, 78, 216, 0.15);
+  box-shadow: 0 4px 20px rgba(29, 78, 216, 0.06);
 }
 </style>
 
