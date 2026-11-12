@@ -6,12 +6,15 @@ import com.dailyreport.domain.PerformanceReview;
 import com.dailyreport.mapper.PerformanceReviewMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.Optional;
@@ -173,6 +176,29 @@ public class PerformanceExcelService {
         String department = trimOrEmpty(config.getDepartment());
         String role = trimOrEmpty(config.getRole());
 
+        Set<String> mergeAnchorsHandled = new HashSet<>();
+        for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
+            CellRangeAddress region = sheet.getMergedRegion(i);
+            int r = region.getFirstRow();
+            int c = region.getFirstColumn();
+            if (r > 60) {
+                continue;
+            }
+            String anchor = r + ":" + c;
+            if (mergeAnchorsHandled.contains(anchor)) {
+                continue;
+            }
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            String text = readCellAsString(row.getCell(c)).trim();
+            if (!text.isEmpty() && touchesSignatureLabels(text)) {
+                setCell(sheet, r, c, rewriteSignatureText(text, assessee, assessor));
+                mergeAnchorsHandled.add(anchor);
+            }
+        }
+
         int lastRow = sheet.getLastRowNum();
         for (int r = 0; r <= lastRow && r < 60; r++) {
             Row row = sheet.getRow(r);
@@ -181,14 +207,22 @@ public class PerformanceExcelService {
             }
             short lastCell = row.getLastCellNum();
             for (int c = 0; c < lastCell && c < 24; c++) {
+                if (isMergeTopLeftHandled(sheet, r, c, mergeAnchorsHandled)) {
+                    continue;
+                }
                 String text = readCellAsString(row.getCell(c));
                 if (text == null || text.isBlank()) {
                     continue;
                 }
                 String t = text.trim();
-                if (t.contains("被评估人")) {
+                if (!touchesSignatureLabels(t)) {
+                    continue;
+                }
+                if (isCombinedSignatureLine(t)) {
+                    setCell(sheet, r, c, rewriteSignatureText(t, assessee, assessor));
+                } else if (t.contains("被评估人")) {
                     setCell(sheet, r, c, "被评估人：" + assessee);
-                } else if (t.contains("评估人") && !t.contains("被评估人")) {
+                } else if (t.contains("评估人")) {
                     setCell(sheet, r, c, "评估人：" + assessor);
                 } else if (t.contains("人事确认") || t.contains("人事审核")) {
                     setCell(sheet, r, c, t.contains("人事确认") ? "人事确认：" : "人事审核：");
@@ -199,12 +233,135 @@ public class PerformanceExcelService {
         }
 
         fillHeaderIdentityPairs(sheet, department, role, assessee);
+    }
 
-        // Official MonthPerformance signature row (Excel row 39 → index 38): B / D / F / H
-        setCell(sheet, 38, 1, "被评估人：" + assessee);
-        setCell(sheet, 38, 3, "评估人：" + assessor);
-        setCell(sheet, 38, 5, "人事确认：");
-        setCell(sheet, 38, 7, "日期：");
+    private static boolean touchesSignatureLabels(String t) {
+        return t.contains("被评估人") || t.contains("评估人")
+                || t.contains("人事确认") || t.contains("人事审核")
+                || t.startsWith("日期：") || t.startsWith("日期:");
+    }
+
+    private static boolean isCombinedSignatureLine(String t) {
+        if (!t.contains("被评估人")) {
+            return false;
+        }
+        return t.contains("评估人") || t.contains("人事确认") || t.contains("人事审核") || t.contains("日期");
+    }
+
+    /**
+     * Patch a combined signature line in place (official template often merges B:H into one cell).
+     */
+    static String rewriteSignatureText(String raw, String assessee, String assessor) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw;
+        s = setLabelValue(s, "被评估人", assessee);
+        s = setAssessorValue(s, assessor);
+        s = clearLabelValueIfNameOnly(s, "人事确认");
+        s = clearLabelValueIfNameOnly(s, "人事审核");
+        s = clearLabelValueIfNameOnly(s, "日期");
+        return s;
+    }
+
+    private static String setLabelValue(String text, String label, String value) {
+        int idx = text.indexOf(label);
+        if (idx < 0) {
+            return text;
+        }
+        return replaceValueAfterLabel(text, idx + label.length(), value);
+    }
+
+    private static String setAssessorValue(String text, String assessor) {
+        int search = 0;
+        while (true) {
+            int idx = text.indexOf("评估人", search);
+            if (idx < 0) {
+                return text;
+            }
+            if (idx > 0 && text.charAt(idx - 1) == '被') {
+                search = idx + 3;
+                continue;
+            }
+            return replaceValueAfterLabel(text, idx + "评估人".length(), assessor);
+        }
+    }
+
+    private static String replaceValueAfterLabel(String text, int fromLabelEnd, String value) {
+        int colon = indexOfColon(text, fromLabelEnd);
+        if (colon < 0) {
+            return text;
+        }
+        int valueStart = colon + 1;
+        while (valueStart < text.length() && Character.isWhitespace(text.charAt(valueStart))) {
+            valueStart++;
+        }
+        int valueEnd = valueStart;
+        while (valueEnd < text.length() && !Character.isWhitespace(text.charAt(valueEnd))) {
+            valueEnd++;
+        }
+        return text.substring(0, valueStart) + value + text.substring(valueEnd);
+    }
+
+    /** Remove stray names after label; keep label and following section labels (e.g. 日期：). */
+    private static String clearLabelValueIfNameOnly(String text, String label) {
+        int idx = text.indexOf(label);
+        if (idx < 0) {
+            return text;
+        }
+        int from = idx + label.length();
+        int colon = indexOfColon(text, from);
+        if (colon < 0) {
+            return text;
+        }
+        int valueStart = colon + 1;
+        while (valueStart < text.length() && Character.isWhitespace(text.charAt(valueStart))) {
+            valueStart++;
+        }
+        if (valueStart >= text.length()) {
+            return text;
+        }
+        if (startsWithKnownLabel(text, valueStart)) {
+            return text;
+        }
+        int valueEnd = valueStart;
+        while (valueEnd < text.length() && !Character.isWhitespace(text.charAt(valueEnd))) {
+            valueEnd++;
+        }
+        if (valueEnd == valueStart) {
+            return text;
+        }
+        return text.substring(0, valueStart) + text.substring(valueEnd);
+    }
+
+    private static int indexOfColon(String text, int from) {
+        int c1 = text.indexOf('：', from);
+        int c2 = text.indexOf(':', from);
+        if (c1 < 0) {
+            return c2;
+        }
+        if (c2 < 0) {
+            return c1;
+        }
+        return Math.min(c1, c2);
+    }
+
+    private static boolean startsWithKnownLabel(String text, int pos) {
+        String rest = text.substring(pos);
+        return rest.startsWith("被评估人") || rest.startsWith("评估人")
+                || rest.startsWith("人事确认") || rest.startsWith("人事审核")
+                || rest.startsWith("日期");
+    }
+
+    private static boolean isMergeTopLeftHandled(Sheet sheet, int row, int col, Set<String> handledAnchors) {
+        for (int i = 0; i < sheet.getNumMergedRegions(); i++) {
+            CellRangeAddress region = sheet.getMergedRegion(i);
+            if (region.isInRange(row, col)) {
+                String anchor = region.getFirstRow() + ":" + region.getFirstColumn();
+                return handledAnchors.contains(anchor);
+            }
+        }
+        return false;
     }
 
     private static void fillHeaderIdentityPairs(Sheet sheet, String department, String role, String assessee) {
