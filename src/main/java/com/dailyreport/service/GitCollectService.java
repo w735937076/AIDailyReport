@@ -5,23 +5,25 @@ import com.dailyreport.domain.GitCommitLog;
 import com.dailyreport.mapper.GitCommitLogMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.LogCommand;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.treewalk.AbstractTreeIterator;
-import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.revwalk.filter.CommitTimeRevFilter;
+import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
@@ -31,13 +33,17 @@ import java.util.List;
 @Service
 public class GitCollectService {
 
+    private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @Autowired
     private GitCommitLogMapper commitLogMapper;
 
     @Autowired
     private AppConfig appConfig;
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    @Autowired
+    private SettingsService settingsService;
 
     public int collectFromRepo(AppConfig.RepoConfig repoConfig) {
         String repoName = repoConfig.getName();
@@ -54,9 +60,8 @@ public class GitCollectService {
         try {
             if (remote != null && !remote.isEmpty()) {
                 return collectFromRemote(repoName, remote, repoConfig.getBranch());
-            } else {
-                return collectFromLocal(repoName, repoPath);
             }
+            return collectFromLocal(repoName, repoPath);
         } catch (Exception e) {
             log.error("采集仓库 {} 失败: {}", repoName, e.getMessage(), e);
             return 0;
@@ -70,26 +75,105 @@ public class GitCollectService {
             return 0;
         }
 
-        int count = 0;
-        try (Git git = Git.open(repoDir)) {
-            LogCommand logCmd = git.log().setMaxCount(100);
+        ZonedDateTime startOfToday = ZonedDateTime.now(SHANGHAI).toLocalDate().atStartOfDay(SHANGHAI);
+        Date since = Date.from(startOfToday.toInstant());
+        String filterUser = resolveFilterUsername();
 
-            Iterable<RevCommit> commits = logCmd.call();
-            for (RevCommit commit : commits) {
-                if (processCommit(git, repoName, commit)) {
-                    count++;
+        int totalNew = 0;
+        try (Git git = Git.open(repoDir)) {
+            List<Ref> localBranches = git.branchList()
+                    .setListMode(ListBranchCommand.ListMode.ALL)
+                    .call();
+
+            List<String> activeBranches = new ArrayList<>();
+            for (Ref ref : localBranches) {
+                String fullName = ref.getName();
+                if (!fullName.startsWith("refs/heads/")) {
+                    continue;
                 }
+                String branchName = fullName.substring("refs/heads/".length());
+                if (branchHasAuthorCommitsSince(git, ref, since, filterUser)) {
+                    activeBranches.add(branchName);
+                }
+            }
+
+            if (activeBranches.isEmpty()) {
+                log.info("仓库 {} 今日（{} 起）无匹配作者「{}」的本地分支提交，新增 0 条",
+                        repoName, startOfToday.format(FORMATTER), filterUser == null ? "（全部）" : filterUser);
+                return 0;
+            }
+
+            log.info("仓库 {} 今日活跃本地分支: {}", repoName, activeBranches);
+
+            for (Ref ref : localBranches) {
+                String fullName = ref.getName();
+                if (!fullName.startsWith("refs/heads/")) {
+                    continue;
+                }
+                String branchName = fullName.substring("refs/heads/".length());
+                if (!activeBranches.contains(branchName)) {
+                    continue;
+                }
+
+                int branchNew = 0;
+                LogCommand logCmd = git.log()
+                        .add(ref.getObjectId())
+                        .setRevFilter(sinceRevFilter(since));
+                for (RevCommit commit : logCmd.call()) {
+                    if (processCommit(git, repoName, commit, filterUser)) {
+                        branchNew++;
+                        totalNew++;
+                    }
+                }
+                log.info("仓库 {} 分支 {} 新增 {} 条提交", repoName, branchName, branchNew);
             }
         } catch (Exception e) {
             log.error("读取本地仓库 {} 失败: {}", repoPath, e.getMessage());
         }
 
-        log.info("仓库 {} 采集完成，新增 {} 条记录", repoName, count);
-        return count;
+        log.info("仓库 {} 采集完成，新增 {} 条记录", repoName, totalNew);
+        return totalNew;
+    }
+
+    private RevFilter sinceRevFilter(Date since) {
+        return CommitTimeRevFilter.after(since);
+    }
+
+    private boolean branchHasAuthorCommitsSince(Git git, Ref branchRef, Date since, String filterUser) {
+        try {
+            for (RevCommit commit : git.log()
+                    .add(branchRef.getObjectId())
+                    .setRevFilter(sinceRevFilter(since))
+                    .call()) {
+                if (authorMatches(commit, filterUser)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("检查分支 {} 活跃度失败: {}", branchRef.getName(), e.getMessage());
+        }
+        return false;
+    }
+
+    private String resolveFilterUsername() {
+        String filterUser = settingsService.getGitFilterUsername();
+        if (filterUser == null || filterUser.isBlank()) {
+            filterUser = appConfig.getGit().getAccount().getUsername();
+        }
+        if (filterUser != null && filterUser.isBlank()) {
+            return null;
+        }
+        return filterUser;
+    }
+
+    private boolean authorMatches(RevCommit commit, String filterUser) {
+        if (filterUser == null || filterUser.isEmpty()) {
+            return true;
+        }
+        return commit.getAuthorIdent().getName().equalsIgnoreCase(filterUser);
     }
 
     private int collectFromRemote(String repoName, String remoteUrl, String branch) {
-        // 临时克隆远程仓库
         File tempDir = new File("./data/temp-repo-" + System.currentTimeMillis());
         try {
             log.info("克隆远程仓库: {}", remoteUrl);
@@ -111,36 +195,26 @@ public class GitCollectService {
             log.error("克隆远程仓库 {} 失败: {}", remoteUrl, e.getMessage());
             return 0;
         } finally {
-            // 清理临时目录
             deleteDirectory(tempDir);
         }
     }
 
-    private boolean processCommit(Git git, String repoName, RevCommit commit) {
+    private boolean processCommit(Git git, String repoName, RevCommit commit, String filterUser) {
         String commitId = commit.getId().getName();
-        String authorName = commit.getAuthorIdent().getName();
-
-        // 如果配置了用户过滤，只采集该用户的提交
-        String filterUser = appConfig.getGit().getAccount().getUsername();
-        if (filterUser != null && !filterUser.isEmpty()
-                && !authorName.equalsIgnoreCase(filterUser)) {
-            log.debug("跳过非用户 {} 的提交: {} by {}", filterUser, commitId, authorName);
+        if (!authorMatches(commit, filterUser)) {
+            log.debug("跳过非用户 {} 的提交: {} by {}", filterUser, commitId, commit.getAuthorIdent().getName());
             return false;
         }
 
-        // 检查是否已存在
         GitCommitLog existing = commitLogMapper.findByCommitId(repoName, commitId);
         if (existing != null) {
             return false;
         }
 
-        // 获取 diff
         String diffText = getCommitDiff(git, commit);
 
-        // 转换为 LocalDateTime - 使用 commit.getCommitTime() 获取 Unix 时间戳
-        int commitTimeSeconds = commit.getCommitTime();
-        LocalDateTime commitTime = LocalDateTime.ofEpochSecond(
-                commitTimeSeconds, 0, ZoneId.systemDefault().getRules().getOffset(java.time.Instant.EPOCH));
+        LocalDateTime commitTime = LocalDateTime.ofInstant(
+                Instant.ofEpochSecond(commit.getCommitTime()), SHANGHAI);
 
         GitCommitLog logEntry = new GitCommitLog();
         logEntry.setRepoName(repoName);
@@ -163,7 +237,6 @@ public class GitCollectService {
             formatter.setRepository(git.getRepository());
             formatter.setDetectRenames(true);
 
-            // 获取父提交
             RevCommit parent = null;
             if (commit.getParentCount() > 0) {
                 try (RevWalk rw = new RevWalk(git.getRepository())) {
@@ -175,7 +248,6 @@ public class GitCollectService {
             if (parent != null) {
                 diffs = formatter.scan(parent.getTree(), commit.getTree());
             } else {
-                // 初始提交，获取所有文件
                 diffs = formatter.scan(null, commit.getTree());
             }
 
@@ -197,6 +269,10 @@ public class GitCollectService {
 
     public List<GitCommitLog> getUnparsedCommits() {
         return commitLogMapper.findUnparsed();
+    }
+
+    public List<GitCommitLog> getUnparsedCommitsForRepo(String repoName) {
+        return commitLogMapper.findUnparsedByRepo(repoName);
     }
 
     public void markAsParsed(Long id) {

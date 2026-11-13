@@ -1,8 +1,14 @@
 /config.local.yml
 /config.yaml
+/frontend/node_modules/
 /target/
+/dist/
 /logs/
 /output/
+/templates/performance/*.xlsx
+!/templates/performance/.gitkeep
+/templates/interview/*.xlsx
+!/templates/interview/.gitkeep
 /data/
 /.idea/
 hs_err_pid*.log

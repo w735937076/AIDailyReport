@@ -97,11 +97,12 @@ public class PromptTemplate {
             %s
 
             重要约束：
-            1. 每周周报量控制在10-18条，只保留有价值的工作
-            2. 简单的小功能、琐碎的修改不需要体现在周报中
-            3. 相同或相似的工作必须合并为一条
+            1. 本周工作条目合计控制在15-20条（work_plans / practices 等数组长度对齐），覆盖本周主要交付与改进；勿只输出极少数条目
+            2. 简单的小功能可合并表述，但不得因过度合并导致少于15条
+            3. 相同或相似的工作可合并为一条，合并后仍须保持15-20条总量（用分主题条目补足）
             4. 优先保留：重要功能开发、bug修复、重构优化、有价值的技术改进
             5. 确保每个任务的预计完成时间是真实的，不要出现全部相同的时间
+            6. 「下周计划」须给出3-5条具体可执行的条目，不得留空或仅写「按计划进行」敷衍
 
             周报格式与日报一致，四个部分：
 
@@ -327,5 +328,105 @@ public class PromptTemplate {
 
     public static String getTechDocPrompt(String workItemsJson) {
         return String.format(TECH_DOC_PROMPT, workItemsJson);
+    }
+
+    private static final String PERFORMANCE_REVIEW_PROMPT = """
+            你是技术部绩效评估撰写助手。根据下方「内参证据」归纳本人当月工作，撰写「月度绩效评估表」长文内容（不是日报/月报 bullet 风格）。
+
+            ## 岗位与周期（内参，勿在正文复述姓名）
+            - 部门：%s
+            - 岗位：%s
+            - 评估月份：%s
+            - 配置姓名（严禁写入 KPI/态度/综合评估等任何输出字段）：%s
+            - 评估人（仅内参）：%s
+
+            ## 当月工作规模统计（内参，勿在正文出现版本库术语或提交次数）
+            %s
+
+            ## 工作证据摘要（内参，勿照搬原文到输出）
+            %s
+
+            ## 写作风格参考（仅模仿语气与段落结构；禁止复制主题、人名、Git/提交类表述）
+            %s
+
+            ## 叙述立场（必须遵守）
+            1. 全文用第一人称「我」自述，语气正式、连贯，像在填写本人的绩效表。
+            2. 禁止出现任何真实姓名、昵称、第三人称指代（如「该员工」「本人某某」「他/她」指自己）。
+            3. 禁止在输出中出现：Git、提交、commit、哈希、分支、仓库、push、merge、工作项抓取、diff 等版本库或采集术语；
+               也不得写「根据提交记录」「于某日提交」「提交时间为…」等句式。只允许描述做了什么事、解决了什么问题、带来什么结果。
+            4. 内参里的统计数字可用于把握工作量，但综合评估须用业务语言概括（如参与方向、交付重点、协同面），不要罗列提交数或仓库名。
+
+            ## 输出要求
+            1. 只输出一个 JSON 对象，无其它文字。
+            2. 字段（四个字段全部遵守上述叙述立场）：
+               - kpiD5：岗位 KPI 完成情况（对应 Excel D5）。按业务域/项目主题拆分，每个主题格式严格为：
+                 、1、主题标题
+                 （空行）
+                 引导句（承上启下，第一人称）
+                 （空行）
+                 1、… 2、… 编号条目（长句，具体工作与影响，第一人称）
+                 （空行）
+                 本主题小结
+                 （空行）
+                 --------------------------------------------------
+                 下一主题…
+                 主题须从本月证据归纳，不得照搬风格参考里的项目名。
+               - auxiliaryD12：其它辅助性绩效（D12），长段落，第一人称；可写跨项目协作、稳定性、工程规范等。
+               - attitudeD15：工作态度（D15），长段落，第一人称；可分责任心与推进、团队协作、主动学习、执行质量等。
+               - overallB38：综合评估意见（B38），第一人称总结本月工作重心、质量与贡献；不得引用版本库或数据采集说法，不得出现人名。
+            3. 全文用中文，偏正式书面语，篇幅充实；禁止编造未在证据中出现的重大上线或事故。
+            """;
+
+    public static String getPerformanceReviewPrompt(String department, String role, String assessee, String assessor,
+                                                    String yearMonthLabel, String statsJson, String evidence,
+                                                    String styleExcerpt) {
+        String style = styleExcerpt != null && !styleExcerpt.isBlank() ? styleExcerpt : "（无历史样例，按公司绩效表常见长文格式撰写）";
+        return String.format(PERFORMANCE_REVIEW_PROMPT,
+                department, role, yearMonthLabel, assessee, assessor, statsJson, evidence, style);
+    }
+
+    private static final String PERFORMANCE_INTERVIEW_PROMPT = """
+            你是技术部「绩效面谈记录表」撰写助手。根据下方内参证据，用第一人称「我」填写面谈表答案区（对应 Excel F3/F4/F5/F6/F8；F7 由部门负责人填写，不要输出）。
+
+            ## 岗位与周期（内参，勿在答案字段复述姓名）
+            - 部门：%s
+            - 岗位：%s
+            - 面谈所属月份：%s
+            - 配置姓名（严禁写入任何答案字段）：%s
+
+            ## 当月工作规模统计（内参，勿在答案中出现版本库术语）
+            %s
+
+            ## 工作证据摘要（内参线索，勿照搬原文）
+            %s
+
+            ## 同月绩效评估长文摘要（若有，仅供把握重点；答案须简短，禁止照抄长文）
+            %s
+
+            ## 写作要求（必须遵守）
+            1. 第一人称「我」；每题约 150～250 个汉字；至少结合 1～2 个本月真实工作案例，具体但简洁。
+            2. 禁止人名、他/她/该员工；配置姓名不得出现在输出。
+            3. 禁止 Git、提交、commit、分支、仓库、merge、diff、「根据提交记录」等表述。
+            4. 不得编造证据中不存在的工作；F9 若无靠谱建议则写「无」。
+            5. 语气口语化、诚恳，比绩效评估长文短得多，不要分主题长文或大量分隔线。
+
+            ## 输出
+            只输出一个 JSON 对象，字段：
+            - answerF3：上一阶段做得较好的方面（对应问题 1）
+            - answerF4：成功经验总结（问题 2）
+            - answerF5：需改善的方面（问题 3）
+            - answerF6：遇到的困难及解决方式（问题 4）
+            - answerF8：接下来工作目标与计划（问题 5）
+            - answerF9：对部门及公司机制的疑问；没有则填「无」
+            """;
+
+    public static String getPerformanceInterviewPrompt(String department, String role, String assessee,
+                                                       String yearMonthLabel, String statsJson, String evidence,
+                                                       String performanceExcerpt) {
+        String perf = performanceExcerpt != null && !performanceExcerpt.isBlank()
+                ? performanceExcerpt
+                : "（本月暂无已生成的绩效评估长文）";
+        return String.format(PERFORMANCE_INTERVIEW_PROMPT,
+                department, role, yearMonthLabel, assessee, statsJson, evidence, perf);
     }
 }

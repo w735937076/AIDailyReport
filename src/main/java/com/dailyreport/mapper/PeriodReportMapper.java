@@ -19,6 +19,12 @@ public interface PeriodReportMapper {
             "WHERE type = #{type} AND start_date = #{startDate}")
     void update(PeriodReport report);
 
+    @Update("UPDATE period_report SET content = #{content}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}")
+    int updateContentById(@Param("id") Long id, @Param("content") String content);
+
+    @Select("SELECT * FROM period_report WHERE id = #{id}")
+    PeriodReport findById(@Param("id") Long id);
+
     @Select("SELECT * FROM period_report WHERE type = #{type} AND start_date = #{startDate}")
     PeriodReport findByTypeAndStartDate(@Param("type") String type, @Param("startDate") LocalDate startDate);
 
@@ -27,4 +33,13 @@ public interface PeriodReportMapper {
 
     @Select("SELECT * FROM period_report ORDER BY start_date DESC")
     List<PeriodReport> findAll();
+
+    @Select("SELECT COUNT(*) FROM period_report WHERE type = #{type}")
+    long countByType(@Param("type") String type);
+
+    @Select("SELECT * FROM period_report WHERE type = #{type} ORDER BY start_date DESC LIMIT #{limit} OFFSET #{offset}")
+    List<PeriodReport> findPageByType(@Param("type") String type, @Param("offset") int offset, @Param("limit") int limit);
+
+    @Delete("DELETE FROM period_report WHERE id = #{id}")
+    int deleteById(@Param("id") Long id);
 }

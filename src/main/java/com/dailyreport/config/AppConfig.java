@@ -17,6 +17,8 @@ public class AppConfig {
     private AiConfig ai = new AiConfig();
     private ReportConfig report = new ReportConfig();
     private SchedulerConfig scheduler = new SchedulerConfig();
+    private PerformanceConfig performance = new PerformanceConfig();
+    private InterviewConfig interview = new InterviewConfig();
 
     @Data
     public static class GitConfig {
@@ -82,5 +84,33 @@ public class AppConfig {
     public static class SchedulerConfig {
         private boolean enabled = true;
         private String cron = "0 0 18 * * ?";
+    }
+
+    /** 绩效评估默认项（可与 Web 配置合并；勿在仓库中存放真实姓名模板） */
+    @Data
+    public static class PerformanceConfig {
+        private String department = "技术部";
+        private String role = "java";
+        private String assessee = "";
+        private String assessor = "";
+        private String templatePath = "./templates/performance/performance_template.xlsx";
+        /** 本地 MonthPerformance 等目录，用于选用最新 xlsx 作样式模板（不提交到 git） */
+        private String templateSearchDir = "";
+        private int scoreKpi = 55;
+        private int scoreAuxiliary = 18;
+        private int scoreAttitude = 20;
+        private int scoreOther = 0;
+    }
+
+    /** 绩效面谈默认项（独立于绩效评估；勿在仓库提交真实姓名） */
+    @Data
+    public static class InterviewConfig {
+        private String department = "技术部";
+        private String role = "java";
+        private String assessee = "";
+        private String hireDate = "";
+        private String templatePath = "./templates/interview/interview_template.xlsx";
+        /** 本机 MonthFace 目录，选用最新 xlsx（不提交到 git） */
+        private String templateSearchDir = "";
     }
 }

@@ -8,6 +8,7 @@ import com.dailyreport.domain.WorkItem;
 import com.dailyreport.mapper.DailyReportMapper;
 import com.dailyreport.mapper.PeriodReportMapper;
 import com.dailyreport.mapper.WorkItemMapper;
+import com.dailyreport.service.AiProviderService;
 import com.dailyreport.service.AiParseService;
 import com.dailyreport.service.AiChatClient;
 import com.dailyreport.service.GitCollectService;
@@ -15,7 +16,7 @@ import com.dailyreport.service.ReportGenerateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
@@ -27,6 +28,7 @@ import java.util.Scanner;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "app.cli.enabled", havingValue = "true")
 public class CliApplication implements CommandLineRunner {
 
     @Autowired
@@ -40,6 +42,9 @@ public class CliApplication implements CommandLineRunner {
 
     @Autowired
     private ReportGenerateService reportGenerateService;
+
+    @Autowired
+    private AiProviderService aiProviderService;
 
     @Autowired
     private WorkItemMapper workItemMapper;
@@ -65,10 +70,10 @@ public class CliApplication implements CommandLineRunner {
     }
 
     private boolean checkConfiguration() {
-        AppConfig.AiConfig aiConfig = appConfig.getAi();
-        if (!AiChatClient.hasKey(aiConfig)) {
-            System.out.println("错误: 请先配置主模型 API Key");
-            System.out.println("编辑 config.yaml 文件，填入您的 API Key");
+        if (!aiProviderService.hasAnyConfiguredEnabledProvider()
+                && !AiChatClient.hasKey(appConfig.getAi())) {
+            System.out.println("错误: 请先配置至少一个启用的 AI 提供商 API Key");
+            System.out.println("在 Web「AI 设置」中添加，或编辑 config.yaml");
             return false;
         }
 
@@ -389,38 +394,6 @@ public class CliApplication implements CommandLineRunner {
             }
         } catch (Exception e) {
             System.out.println("日期格式错误，请使用 yyyy-MM-dd 格式");
-        }
-    }
-
-    // 定时任务 - 每天 18:00 自动生成日报
-    @Scheduled(cron = "${scheduler.cron:0 0 18 * * ?}")
-    public void scheduledDailyReport() {
-        if (!appConfig.getScheduler().isEnabled()) {
-            return;
-        }
-
-        log.info("定时任务触发，开始生成日报");
-        System.out.println("\n[定时任务] 开始生成日报...");
-
-        try {
-            LocalDate today = LocalDate.now();
-            List<WorkItem> workItems = workItemMapper.findByDateOrdered(today);
-
-            if (workItems.isEmpty()) {
-                log.info("今日无工作记录，跳过日报生成");
-                return;
-            }
-
-            // 定时任务使用默认的明日计划
-            String tomorrowPlan = "待填写";
-            DailyReport report = reportGenerateService.generateDailyReport(today, tomorrowPlan);
-
-            if (report != null) {
-                log.info("日报生成成功: {}", report.getExcelPath());
-                System.out.println("[定时任务] ✅ 日报已生成: " + report.getExcelPath());
-            }
-        } catch (Exception e) {
-            log.error("定时日报生成失败", e);
         }
     }
 

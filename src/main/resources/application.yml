@@ -1,6 +1,11 @@
 spring:
   application:
     name: dailyreport
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -11,6 +16,10 @@ spring:
   sql:
     init:
       mode: never
+
+  web:
+    resources:
+      static-locations: classpath:/static/
 
 server:
   port: 18080
@@ -30,3 +39,9 @@ logging:
 
 app:
   config-file: ./config.yaml
+  cli:
+    enabled: false
+  open-browser: true
+  scheduler:
+    cron: "0 0 18 * * ?"
+    timezone: Asia/Shanghai

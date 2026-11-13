@@ -7,6 +7,9 @@ import com.dailyreport.domain.WorkItem;
 import com.dailyreport.mapper.DailyReportMapper;
 import com.dailyreport.mapper.PeriodReportMapper;
 import com.dailyreport.mapper.WorkItemMapper;
+import com.dailyreport.util.OutputPathGuard;
+import com.dailyreport.web.dto.PageRequestUtil;
+import com.dailyreport.web.dto.PageResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -367,8 +370,75 @@ public class ReportGenerateService {
         return dailyReportMapper.findByDate(date);
     }
 
+    public DailyReport getDailyReportById(Long id) {
+        return dailyReportMapper.findById(id);
+    }
+
+    public PeriodReport getPeriodReportById(Long id) {
+        return periodReportMapper.findById(id);
+    }
+
+    public DailyReport updateDailyReportText(Long id, String content, String tomorrowPlan) {
+        DailyReport existing = dailyReportMapper.findById(id);
+        if (existing == null) {
+            return null;
+        }
+        String body = content != null ? content : "";
+        String plan = tomorrowPlan != null ? tomorrowPlan : "";
+        dailyReportMapper.updateTextById(id, body, plan);
+        existing.setContent(body);
+        existing.setTomorrowPlan(plan);
+        return existing;
+    }
+
+    public PeriodReport updatePeriodReportText(Long id, String content) {
+        PeriodReport existing = periodReportMapper.findById(id);
+        if (existing == null) {
+            return null;
+        }
+        String body = content != null ? content : "";
+        periodReportMapper.updateContentById(id, body);
+        existing.setContent(body);
+        return existing;
+    }
+
     public List<PeriodReport> getPeriodReports(String type) {
         return periodReportMapper.findByType(type);
+    }
+
+    public PageResult<DailyReport> getDailyReportsPage(int page, int size) {
+        int s = PageRequestUtil.clampSize(size);
+        int p = PageRequestUtil.clampPage(page);
+        int offset = PageRequestUtil.offset(p, s);
+        List<DailyReport> items = dailyReportMapper.findPage(offset, s);
+        return new PageResult<>(items, dailyReportMapper.countAll(), p, s);
+    }
+
+    public PageResult<PeriodReport> getPeriodReportsPage(String type, int page, int size) {
+        int s = PageRequestUtil.clampSize(size);
+        int p = PageRequestUtil.clampPage(page);
+        int offset = PageRequestUtil.offset(p, s);
+        String normalized = type.toUpperCase();
+        List<PeriodReport> items = periodReportMapper.findPageByType(normalized, offset, s);
+        return new PageResult<>(items, periodReportMapper.countByType(normalized), p, s);
+    }
+
+    public boolean deleteDailyReport(Long id) throws java.io.IOException {
+        DailyReport existing = dailyReportMapper.findById(id);
+        if (existing == null) {
+            return false;
+        }
+        OutputPathGuard.deleteReportOutputFileIfAllowed(existing.getExcelPath());
+        return dailyReportMapper.deleteById(id) > 0;
+    }
+
+    public boolean deletePeriodReport(Long id) throws java.io.IOException {
+        PeriodReport existing = periodReportMapper.findById(id);
+        if (existing == null) {
+            return false;
+        }
+        OutputPathGuard.deleteReportOutputFileIfAllowed(existing.getExcelPath());
+        return periodReportMapper.deleteById(id) > 0;
     }
 
     public String generateTechDoc(LocalDate startDate, LocalDate endDate) throws Exception {
