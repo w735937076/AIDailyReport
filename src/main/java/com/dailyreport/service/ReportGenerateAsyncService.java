@@ -8,10 +8,9 @@ import com.dailyreport.web.dto.GenerateReportRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.time.DayOfWeek;
+import com.dailyreport.util.WeekRangeUtil;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,8 +93,8 @@ public class ReportGenerateAsyncService {
 
     private void runWeekly(String jobId, GenerateReportRequest req) throws Exception {
         LocalDate start = req != null && req.getDate() != null
-                ? LocalDate.parse(req.getDate(), DATE_FORMAT)
-                : LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                ? WeekRangeUtil.mondayOfWeek(LocalDate.parse(req.getDate(), DATE_FORMAT))
+                : WeekRangeUtil.currentWeekMondayInShanghai();
         jobService.stage(jobId, "LOAD", 20, "正在汇总本周工作项…");
         jobService.stage(jobId, "AI", 55, "正在调用 AI 生成周报…");
         PeriodReport report = reportGenerateService.generateWeeklyReport(start);
@@ -130,10 +129,14 @@ public class ReportGenerateAsyncService {
 
     private static Map<String, Object> resultForPeriod(PeriodReport report, LocalDate start) {
         Map<String, Object> result = new HashMap<>();
-        result.put("startDate", start.toString());
         if (report != null) {
+            result.put("startDate", report.getStartDate().toString());
+            result.put("endDate", report.getEndDate().toString());
             result.put("excelPath", report.getExcelPath());
             result.put("status", report.getStatus());
+        } else {
+            result.put("startDate", start.toString());
+            result.put("endDate", start.plusDays(6).toString());
         }
         return result;
     }

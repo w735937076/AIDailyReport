@@ -15,10 +15,9 @@ import com.dailyreport.web.dto.UpdateDailyReportRequest;
 import com.dailyreport.web.dto.UpdatePeriodReportRequest;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.DayOfWeek;
+import com.dailyreport.util.WeekRangeUtil;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -172,8 +171,8 @@ public class ReportController {
     @PostMapping("/weekly/export-excel")
     public ApiResponse<Map<String, String>> exportWeeklyExcel(@RequestBody(required = false) GenerateReportRequest req) throws Exception {
         LocalDate start = req != null && req.getDate() != null
-                ? LocalDate.parse(req.getDate(), DATE_FORMAT)
-                : LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                ? WeekRangeUtil.mondayOfWeek(LocalDate.parse(req.getDate(), DATE_FORMAT))
+                : WeekRangeUtil.currentWeekMondayInShanghai();
         LocalDate end = start.plusDays(6);
         List<WorkItem> items = workItemMapper.findByDateRange(start, end);
         PeriodReport report = reportGenerateService.getPeriodReports("WEEK").stream()
